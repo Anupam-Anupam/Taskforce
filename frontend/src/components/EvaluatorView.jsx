@@ -4,17 +4,17 @@ import { API_BASE } from '../config';
 const EvaluatorView = () => {
   const [evaluatorData, setEvaluatorData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [progressGraph, setProgressGraph] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(false);
 
   useEffect(() => {
     const fetchEvaluatorData = async () => {
       try {
-        // Placeholder - replace with actual evaluator API endpoint when available
         const response = await fetch(`${API_BASE}/evaluator/status`);
         if (response.ok) {
           const data = await response.json();
           setEvaluatorData(data);
         }
-        // Silently fail if endpoint doesn't exist yet
       } catch (err) {
         // Silently fail - evaluator endpoint not yet implemented
       } finally {
@@ -22,10 +22,46 @@ const EvaluatorView = () => {
       }
     };
 
-    fetchEvaluatorData();
-    const interval = setInterval(fetchEvaluatorData, 10000); // Refresh every 10s
+    const fetchProgressGraph = async () => {
+      try {
+        setGraphLoading(true);
+        console.log('[EvaluatorView] Fetching progress graph...');
+        const response = await fetch(`${API_BASE}/evaluator/agents/progress/graph`);
+        console.log('[EvaluatorView] Graph response status:', response.status);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[EvaluatorView] Graph data received:', {
+            status: data.status,
+            hasImage: !!data.image_data_url,
+            agents: data.agents,
+            message: data.message
+          });
+          if (data.image_data_url) {
+            setProgressGraph(data);
+            console.log('[EvaluatorView] Graph state updated successfully');
+          } else {
+            console.warn('[EvaluatorView] No image_data_url in response');
+          }
+        } else {
+          console.error('[EvaluatorView] Graph fetch failed with status:', response.status);
+        }
+      } catch (err) {
+        console.error('[EvaluatorView] Error fetching graph:', err);
+      } finally {
+        setGraphLoading(false);
+      }
+    };
 
-    return () => clearInterval(interval);
+    fetchEvaluatorData();
+    fetchProgressGraph();
+    
+    const statusInterval = setInterval(fetchEvaluatorData, 10000); // Refresh status every 10s
+    const graphInterval = setInterval(fetchProgressGraph, 30000); // Refresh graph every 30s
+
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(graphInterval);
+    };
   }, []);
 
   const status = evaluatorData?.status || 'loading';
@@ -110,6 +146,51 @@ const EvaluatorView = () => {
               </div>
               <span className="score-value">—</span>
             </div>
+          </div>
+        </div>
+
+        <div className="evaluator-card evaluator-card--wide">
+          <div className="evaluator-card__header">
+            <h3>📊 Agent Progress Graph</h3>
+          </div>
+          <div className="evaluator-card__body">
+            {graphLoading ? (
+              <div style={{ 
+                color: 'var(--muted-text)', 
+                textAlign: 'center',
+                padding: '40px 20px'
+              }}>
+                Loading progress graph...
+              </div>
+            ) : progressGraph && progressGraph.image_data_url ? (
+              <div style={{ padding: '10px' }}>
+                <img 
+                  src={progressGraph.image_data_url} 
+                  alt="Agent Progress Graph" 
+                  style={{ 
+                    width: '100%', 
+                    height: 'auto',
+                    borderRadius: '8px'
+                  }} 
+                />
+                <div style={{ 
+                  marginTop: '10px', 
+                  fontSize: '0.875rem', 
+                  color: 'var(--muted-text)',
+                  textAlign: 'center'
+                }}>
+                  {progressGraph.message || 'Real-time agent progress tracking'}
+                </div>
+              </div>
+            ) : (
+              <div style={{ 
+                color: 'var(--muted-text)', 
+                textAlign: 'center',
+                padding: '40px 20px'
+              }}>
+                No progress data available. Graph will appear once agents start working on tasks.
+              </div>
+            )}
           </div>
         </div>
 

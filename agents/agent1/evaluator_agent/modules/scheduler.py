@@ -53,6 +53,11 @@ class EvaluatorScheduler:
         except Exception as e:
             self.logger.error(json.dumps({"event": "history_load_error", "error": str(e)}))
 
+    @property
+    def running(self) -> bool:
+        """Check if scheduler is currently running."""
+        return self._thread is not None and self._thread.is_alive()
+    
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return

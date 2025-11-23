@@ -79,8 +79,12 @@ def create_app() -> FastAPI:
                 if report.get("task_id"):
                     tasks.add(report["task_id"])
                 if report.get("scores") and isinstance(report["scores"], dict):
-                    overall_score = report["scores"].get("overall_score", 0)
+                    # Try overall_score first, then final_score
+                    overall_score = report["scores"].get("overall_score") or report["scores"].get("final_score", 0)
                     if overall_score > 0:
+                        # Convert to percentage if it's a fraction (0-1)
+                        if overall_score <= 1.0:
+                            overall_score *= 100
                         total_score += overall_score
                         score_count += 1
             
