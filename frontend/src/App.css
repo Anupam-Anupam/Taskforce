@@ -707,21 +707,6 @@ body {
   margin-top: 4px;
 }
 
-.agent-card__screenshot {
-  position: relative;
-  overflow: hidden;
-  border-radius: 14px;
-  background-color: #202735;
-  min-height: 180px;
-  border: 1px solid rgba(95, 111, 161, 0.9);
-}
-
-.agent-card__screenshot img {
-  width: 100%;
-  display: block;
-  object-fit: cover;
-}
-
 .agent-card__placeholder {
   height: 100%;
   display: flex;
@@ -730,6 +715,19 @@ body {
   color: var(--lighter-text);
   font-size: 0.9rem;
   padding: 20px;
+  text-align: center;
+}
+
+.vnc-stream-mini--placeholder {
+  background: #2a3d35;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vnc-stream-mini__placeholder-content {
+  color: var(--lighter-text);
+  font-size: 0.9rem;
   text-align: center;
 }
 

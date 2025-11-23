@@ -221,22 +221,11 @@ class AgentRunner:
                         meta={"stderr": stderr}
                     )
                 
-                # Screenshots are handled by CUA trajectory processor
-                # Count screenshots from MongoDB for progress reporting
-                screenshot_count = 0
-                try:
-                    screenshots = self.mongo.get_screenshots(task_id=task_id, limit=100)
-                    screenshot_count = len(screenshots) if screenshots else 0
-                except:
-                    pass
-                
-                # Determine final progress percent
-                # If return_code is 0, set to 100; otherwise use heuristics
+                # Determine final progress percent based on return code
                 if return_code == 0:
                     final_percent = 100
                 else:
-                    # Heuristic: if we uploaded screenshots, consider it partial success
-                    final_percent = 50 if screenshot_count > 0 else 0
+                    final_percent = 0
                 
                 # Insert final progress
                 self.postgres.insert_progress(

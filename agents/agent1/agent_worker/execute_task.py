@@ -242,7 +242,6 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                     # Re-raise other errors
                     raise
             
-            # Screenshots handled by CUA trajectory processor - no cleanup needed
             
             if collected_outputs:
                 result["output"] = "\n".join(collected_outputs)

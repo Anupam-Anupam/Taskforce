@@ -539,32 +539,13 @@ def get_agent_responses(limit: int = 60):
 
 @app.get("/agents/live")
 def get_agents_live(limit_per_agent: int = 10):
-    """Get live agent data including screenshots and progress."""
+    """Get live agent data including progress."""
     try:
         agent_ids = ["agent1", "agent2", "agent3"]
         agents_data = []
         
         for agent_id in agent_ids:
-            # 1. Get screenshots
-            screenshots = []
-            try:
-                screenshots = agent_mongo.get_screenshots(agent_id=agent_id, limit=limit_per_agent)
-            except Exception as e:
-                print(f"Warning: Failed to get screenshots for {agent_id}: {e}")
-                screenshots = []
-            
-            # Format screenshots
-            formatted_screenshots = []
-            for screenshot in screenshots:
-                formatted_screenshots.append({
-                    "id": str(screenshot.get("_id", "")),
-                    "url": screenshot.get("url", ""),
-                    "task_id": screenshot.get("task_id"),
-                    "timestamp": screenshot.get("uploaded_at") or screenshot.get("timestamp"),
-                    "filename": screenshot.get("filename", "")
-                })
-            
-            # 2. Get progress info
+            # Get progress info
             latest_progress = None
             progress_updates = []
             try:
@@ -578,18 +559,16 @@ def get_agents_live(limit_per_agent: int = 10):
                 # Log error but don't fail request
                 print(f"Failed to get progress for {agent_id}: {e}")
             
-            # 3. Build agent data
+            # Build agent data
             agents_data.append({
                 "agent_id": agent_id,
-                "screenshots": formatted_screenshots,
                 "latest_progress": latest_progress,
                 "progress_updates": progress_updates
             })
         
         return {
             "agents": agents_data,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "minio_available": True # Assuming True, or check mongo connection
+            "generated_at": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get agents live data: {str(e)}")

@@ -181,26 +181,8 @@ class TrajectoryProcessor(FileSystemEventHandler):
                             content = item.get("content", [])
                             for cp in content:
                                 if isinstance(cp, dict):
-                                    # Check for image in content
-                                    image_url = cp.get("image_url") or cp.get("image")
-                                    if image_url and isinstance(image_url, str):
-                                        print(f"[TrajectoryProcessor] Found image in content: {image_url[:50]}...")
-                                        if image_url.startswith("data:image"):
-                                            self._store_screenshot_base64(image_url)
-                                        elif Path(image_url).exists():
-                                            self._store_screenshot(image_url)
-                
-                # Extract screenshots from computer_call_output
-                if "type" in data and data.get("type") == "computer_call_output":
-                    screenshot_path = data.get("screenshot_path") or data.get("image_path")
-                    if screenshot_path:
-                        print(f"[TrajectoryProcessor] Found screenshot_path: {screenshot_path}")
-                        self._store_screenshot(screenshot_path)
-                    
-                    image_data = data.get("image") or data.get("screenshot")
-                    if image_data and isinstance(image_data, str) and image_data.startswith("data:image"):
-                        print(f"[TrajectoryProcessor] Found base64 image in computer_call_output")
-                        self._store_screenshot_base64(image_data)
+                                    # Image processing removed - VNC stream used instead
+                                    pass
                 
                 # Check for nested trajectory data
                 if "trajectory" in data:
@@ -226,60 +208,11 @@ class TrajectoryProcessor(FileSystemEventHandler):
         except Exception as e:
             print(f"Error processing trajectory {file_path}: {e}")
     
-    def _store_screenshot(self, image_path: str):
-        """Store screenshot from file path."""
-        try:
-            path = Path(image_path)
-            if not path.exists():
-                # Try relative to trajectory_dir
-                path = self.trajectory_dir / image_path
-                if not path.exists():
-                    return
-            
-            with open(path, "rb") as f:
-                image_data = f.read()
-            
-            screenshot_id = self.mongo.store_screenshot(
-                task_id=self.task_id,
-                image_data=image_data,
-                filename=path.name
-            )
-            print(f"[TrajectoryProcessor] ✅ Stored screenshot: {screenshot_id} ({len(image_data)} bytes)")
-        except Exception as e:
-            print(f"Error storing screenshot {image_path}: {e}")
-    
-    def _store_screenshot_base64(self, base64_data: str):
-        """Store screenshot from base64 data URL."""
-        try:
-            # Extract base64 part from data URL
-            if "," in base64_data:
-                base64_part = base64_data.split(",", 1)[1]
-            else:
-                base64_part = base64_data
-            
-            image_data = base64.b64decode(base64_part)
-            
-            screenshot_id = self.mongo.store_screenshot(
-                task_id=self.task_id,
-                image_data=image_data,
-                filename=f"screenshot_{datetime.utcnow().isoformat()}.png"
-            )
-            print(f"[TrajectoryProcessor] ✅ Stored base64 screenshot: {screenshot_id} ({len(image_data)} bytes)")
-        except Exception as e:
-            print(f"Error storing base64 screenshot: {e}")
     
     def _process_trajectory_data(self, trajectory_data: Any):
         """Recursively process nested trajectory data."""
         if isinstance(trajectory_data, dict):
-            # Check for screenshots
-            for key in ["screenshot", "image", "screenshot_path", "image_path"]:
-                if key in trajectory_data:
-                    value = trajectory_data[key]
-                    if isinstance(value, str):
-                        if value.startswith("data:image"):
-                            self._store_screenshot_base64(value)
-                        elif Path(value).exists():
-                            self._store_screenshot(value)
+            # Screenshot processing removed - VNC stream used instead
             
             # Recursively process nested dicts
             for value in trajectory_data.values():

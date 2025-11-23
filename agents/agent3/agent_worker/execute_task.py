@@ -45,8 +45,6 @@ if Path("/app/agent_worker").exists():
 
 
 
-# Screenshots handled by CUA trajectory processor - no manual screenshot code needed
-
 
 def check_cua_packages():
     """Check if CUA packages are installed and importable."""
@@ -200,7 +198,7 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                 traceback.print_exc()
                 raise
             
-            # Create agent with trajectory_dir - CUA handles screenshots automatically
+            # Create agent with trajectory_dir
             # Use workdir if provided, otherwise current directory
             workdir = os.getenv("WORKDIR")
             if workdir:
@@ -350,7 +348,6 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                     # Re-raise other errors
                     raise
             
-            # Screenshots handled by CUA trajectory processor - no cleanup needed
             
             if collected_outputs:
                 result["output"] = "\n".join(collected_outputs)

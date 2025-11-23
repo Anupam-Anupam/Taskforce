@@ -353,15 +353,11 @@ class MongoClientWrapper:
             self.client = MongoClient(mongo_uri)
             self.db = self.client[self.db_name]
             self.logs = self.db.agent_logs
-            self.screenshots = self.db.screenshots
             
             # Create indexes
             self.logs.create_index("task_id")
             self.logs.create_index("level")
             self.logs.create_index("timestamp")
-            self.screenshots.create_index("task_id")
-            self.screenshots.create_index("agent_id")
-            self.screenshots.create_index("uploaded_at")
         except Exception as e:
             raise RuntimeError(f"Failed to connect to MongoDB: {e}")
     
@@ -395,72 +391,6 @@ class MongoClientWrapper:
         except Exception as e:
             # Log to console if MongoDB write fails
             print(f"Warning: Failed to write log to MongoDB: {e}")
-    
-    def store_screenshot(
-        self,
-        task_id: Optional[int],
-        image_data: bytes,
-        filename: Optional[str] = None
-    ) -> str:
-        """
-        Store screenshot in MongoDB as base64.
-        
-        Args:
-            task_id: Optional task identifier
-            image_data: Image bytes
-            filename: Optional filename
-            
-        Returns:
-            Screenshot document ID
-        """
-        import base64
-        
-        try:
-            # Convert to base64
-            base64_data = base64.b64encode(image_data).decode('utf-8')
-            url = f"data:image/png;base64,{base64_data}"
-            
-            screenshot_doc = {
-                "agent_id": self.agent_id,
-                "task_id": task_id,
-                "url": url,
-                "filename": filename or f"screenshot_{datetime.utcnow().isoformat()}.png",
-                "size_bytes": len(image_data),
-                "uploaded_at": datetime.utcnow(),
-                "timestamp": datetime.utcnow()
-            }
-            
-            result = self.screenshots.insert_one(screenshot_doc)
-            return str(result.inserted_id)
-        except Exception as e:
-            print(f"Warning: Failed to store screenshot in MongoDB: {e}")
-            raise
-    
-    def get_screenshots(
-        self,
-        task_id: Optional[int] = None,
-        limit: int = 10
-    ) -> list:
-        """
-        Get screenshots from MongoDB.
-        
-        Args:
-            task_id: Optional task identifier to filter by
-            limit: Maximum number of screenshots to return
-            
-        Returns:
-            List of screenshot documents
-        """
-        try:
-            query = {"agent_id": self.agent_id}
-            if task_id:
-                query["task_id"] = task_id
-            
-            cursor = self.screenshots.find(query).sort("uploaded_at", -1).limit(limit)
-            return list(cursor)
-        except Exception as e:
-            print(f"Warning: Failed to get screenshots from MongoDB: {e}")
-            return []
     
     def close(self):
         """Close MongoDB connection."""

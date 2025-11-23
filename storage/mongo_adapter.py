@@ -103,7 +103,6 @@ class MongoAdapter:
         self.logs = self.db.agent_logs
         self.memories = self.db.agent_memories
         self.config = self.db.agent_config
-        self.screenshots = self.db.screenshots
         
         # Create indexes
         self.logs.create_index("agent_id")
@@ -116,10 +115,6 @@ class MongoAdapter:
         self.memories.create_index("memory_type")
         
         self.config.create_index("key", unique=True)
-        
-        self.screenshots.create_index("agent_id")
-        self.screenshots.create_index("task_id")
-        self.screenshots.create_index("uploaded_at")
     
     def write_log(
         self,
@@ -343,54 +338,6 @@ class MongoAdapter:
             )
         
         return results
-    
-    def get_screenshots(
-        self,
-        agent_id: Optional[str] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        Get screenshots from MongoDB.
-        
-        Args:
-            agent_id: Agent identifier (required if not cluster mode)
-            limit: Maximum number of screenshots to return
-            
-        Returns:
-            List of screenshot documents
-        """
-        if self.cluster_mode:
-            if not agent_id:
-                raise ValueError("agent_id required in cluster mode")
-            db_name = f"{agent_id}db"
-            if db_name not in self.databases:
-                # Parse connection string to construct agent-specific URL
-                if '?' in self.connection_string:
-                    base_url, query_params = self.connection_string.split('?', 1)
-                    db_url = f"{base_url}/{db_name}?{query_params}"
-                else:
-                    db_url = f"{self.connection_string}/{db_name}?authSource=admin"
-                
-                client = MongoClient(db_url)
-                self.databases[db_name] = {
-                    "client": client,
-                    "db": client[db_name],
-                    "screenshots": client[db_name].screenshots
-                }
-            screenshots_collection = self.databases[db_name]["screenshots"]
-        else:
-            if agent_id and agent_id != self.agent_id:
-                raise ValueError(f"Cannot read screenshots from different agent in single mode.")
-            screenshots_collection = self.screenshots
-        
-        query = {}
-        if agent_id and self.cluster_mode:
-            query["agent_id"] = agent_id
-        elif not self.cluster_mode:
-            query["agent_id"] = self.agent_id
-        
-        cursor = screenshots_collection.find(query).sort("uploaded_at", -1).limit(limit)
-        return list(cursor)
     
     def fetch_task_logs(
         self,

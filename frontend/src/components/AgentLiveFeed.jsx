@@ -90,7 +90,7 @@ const AgentLiveFeed = () => {
           {/* Mini VNC Stream - Just the live feed, nothing else */}
           <VNCStreamMini 
             agentId={agentId}
-            vncUrl={vncUrl || "https://m-linux-aqnzbmas97.containers.cloud.trycua.com/vnc.html?autoconnect=true&password=479e9bdb455b566d"}
+            vncUrl={vncUrl}
           />
 
           <div className="agent-card__meta">
@@ -125,7 +125,7 @@ const AgentLiveFeed = () => {
       <header className="live-feed__header">
         <div>
           <h1>AI Village Control Center</h1>
-          <p>Monitor agent activity, live screenshots, and progress in real time.</p>
+          <p>Monitor agent activity, live VNC streams, and progress in real time.</p>
         </div>
         <div className="live-feed__meta">
           <span>Last refreshed: {generatedAt ? formatTime(generatedAt) : '—'}</span>
