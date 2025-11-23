@@ -241,8 +241,42 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
             
             print(f"Executing task: {task_description}")
             
-            # Create conversation history
-            history = [{"role": "user", "content": task_description}]
+            # System prompt for Agent 3
+            system_prompt = """You are Agent 3, a highly capable AI assistant with access to a Linux desktop environment through computer use tools.
+
+IMPORTANT: You are using computer use capabilities. This means you can:
+- See and interact with a real Linux desktop through screenshots
+- Click on UI elements, type text, and control the mouse/keyboard
+- Execute shell commands in a terminal
+- Browse the internet using a real web browser
+- Read and write files on the system
+- Use any installed software
+
+Your capabilities:
+- Control mouse and keyboard to interact with GUI applications
+- Execute shell commands in the terminal
+- Browse the internet and interact with web pages
+- Read and write files
+- Take screenshots to verify your actions
+- Use any installed software on the Linux system
+
+Your approach:
+- YOU MUST USE THE COMPUTER TOOLS to complete tasks - don't just describe what to do
+- Break down complex tasks into clear, manageable steps
+- Verify each action by observing the results (check screenshots, command outputs)
+- If something doesn't work, try alternative approaches
+- Be thorough and persistent - don't give up easily
+- Explain what you're doing as you work through the task
+- When browsing the web, actually navigate to websites and interact with them
+- Use the tools available to you effectively
+
+Remember: You have up to 50 turns to complete tasks, so take your time and be methodical. Always verify your work before concluding a task. You are controlling a REAL computer, so actually perform the actions requested."""
+            
+            # Create conversation history with system prompt
+            history = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": task_description}
+            ]
             
             # Execute the task
             print("Starting task execution...")
@@ -253,7 +287,10 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
             # However, we pass a copy to agent.run() to avoid modifying the object it's using
             try:
                 # Use a fresh history for each run to avoid state issues
-                history = [{"role": "user", "content": task_description}]
+                history = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": task_description}
+                ]
                 
                 # Pass a copy of history to agent.run() to avoid conflicts
                 # The agent manages its own internal state, but we maintain our own history
@@ -274,13 +311,15 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                                 if text:
                                     collected_outputs.append(text)
                                     print(f"Agent: {text}")
-                                    if mongo_client:
-                                        mongo_client.write_log(
-                                            task_id=task_id,
-                                            level="info",
-                                            message=text,
-                                            meta={"source": "agent_output"}
-                                        )
+                                    # Note: Trajectory processor already logs these messages
+                                    # Commenting out to avoid duplicate messages in chat
+                                    # if mongo_client:
+                                    #     mongo_client.write_log(
+                                    #         task_id=task_id,
+                                    #         level="info",
+                                    #         message=text,
+                                    #         meta={"source": "agent_output"}
+                                    #     )
                         elif item_type == "computer_call":
                             action = item.get("action", {})
                             action_type = action.get("type", "")
@@ -310,7 +349,10 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                         
                         # Retry with a simplified task description
                         print("Retrying with simplified task...")
-                        retry_history = [{"role": "user", "content": f"Please execute this task: {task_description}"}]
+                        retry_history = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Please execute this task: {task_description}"}
+                        ]
                         
                         # Pass a copy of history to agent.run() to avoid conflicts
                         # Extend our history after each iteration
@@ -329,13 +371,15 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                                         if text:
                                             collected_outputs.append(text)
                                             print(f"Agent: {text}")
-                                            if mongo_client:
-                                                mongo_client.write_log(
-                                                    task_id=task_id,
-                                                    level="info",
-                                                    message=text,
-                                                    meta={"source": "agent_output"}
-                                                )
+                                            # Note: Trajectory processor already logs these messages
+                                            # Commenting out to avoid duplicate messages in chat
+                                            # if mongo_client:
+                                            #     mongo_client.write_log(
+                                            #         task_id=task_id,
+                                            #         level="info",
+                                            #         message=text,
+                                            #         meta={"source": "agent_output"}
+                                            #     )
                                 elif item_type == "computer_call_output":
                                     print(f"Computer Output: [Result]")
                         

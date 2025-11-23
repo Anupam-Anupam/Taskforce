@@ -241,8 +241,33 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
             
             print(f"Executing task: {task_description}")
             
-            # Create conversation history
-            history = [{"role": "user", "content": task_description}]
+            # System prompt for Agent 2
+            system_prompt = """You are Agent 2, a highly capable AI assistant with access to a Linux desktop environment through computer use tools. You can interact with the desktop, browse the web, run commands, and complete complex tasks.
+
+Your capabilities:
+- Control mouse and keyboard to interact with GUI applications
+- Execute shell commands in the terminal
+- Browse the internet and interact with web pages
+- Read and write files
+- Take screenshots to verify your actions
+- Use any installed software on the Linux system
+
+Your approach:
+- Break down complex tasks into clear, manageable steps
+- Verify each action by observing the results (check screenshots, command outputs)
+- If something doesn't work, try alternative approaches
+- Be thorough and persistent - don't give up easily
+- Explain what you're doing as you work through the task
+- When browsing the web, actually navigate to websites and interact with them
+- Use the tools available to you effectively
+
+Remember: You have up to 50 turns to complete tasks, so take your time and be methodical. Always verify your work before concluding a task."""
+            
+            # Create conversation history with system prompt
+            history = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": task_description}
+            ]
             
             # Execute the task
             print("Starting task execution...")
@@ -253,7 +278,10 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
             # However, we pass a copy to agent.run() to avoid modifying the object it's using
             try:
                 # Use a fresh history for each run to avoid state issues
-                history = [{"role": "user", "content": task_description}]
+                history = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": task_description}
+                ]
                 
                 # Pass a copy of history to agent.run() to avoid conflicts
                 # The agent manages its own internal state, but we maintain our own history
@@ -310,7 +338,10 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                         
                         # Retry with a simplified task description
                         print("Retrying with simplified task...")
-                        retry_history = [{"role": "user", "content": f"Please execute this task: {task_description}"}]
+                        retry_history = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Please execute this task: {task_description}"}
+                        ]
                         
                         # Pass a copy of history to agent.run() to avoid conflicts
                         # Extend our history after each iteration

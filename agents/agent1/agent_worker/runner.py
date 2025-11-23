@@ -232,7 +232,7 @@ class AgentRunner:
                     task_id=task_id,
                     agent_id=self.config.agent_id,
                     percent=final_percent,
-                    message=f"completed (return_code={return_code}, screenshots={screenshot_count})"
+                    message=f"completed (return_code={return_code})"
                 )
                 
                 # Update task response
@@ -266,14 +266,14 @@ class AgentRunner:
                 
                 # Final fallback: use summary if stdout is empty
                 if not response_text:
-                    response_text = f"Task completed (return_code={return_code}, duration={duration:.2f}s, screenshots={screenshot_count})"
+                    response_text = f"Task completed (return_code={return_code}, duration={duration:.2f}s)"
                 
                 # Update task status to completed
                 try:
                     self.postgres.update_task_status(
                         task_id=task_id,
                         status="completed" if return_code == 0 else "failed",
-                        metadata={"completed_at": datetime.utcnow().isoformat(), "return_code": return_code, "screenshots": screenshot_count}
+                        metadata={"completed_at": datetime.utcnow().isoformat(), "return_code": return_code}
                     )
                 except Exception as e:
                     print(f"[{self.config.agent_id}] Warning: Failed to update task status: {e}")

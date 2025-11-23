@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 const VNCStreamMini = ({ agentId, vncUrl }) => {
   // Default VNC URLs per agent
   const defaultUrls = {
-    'agent1': 'https://m-linux-aqnzbmas97.containers.cloud.trycua.com/vnc.html?autoconnect=true&password=479e9bdb455b566d',
+    'agent1': 'https://m-linux-pyphfh77.sandbox.cua.ai/vnc.html?autoconnect=true&password=a1378b59f3dd8c19',
     'agent2': 'https://m-linux-kpzcblkosd.containers.cloud.trycua.com/vnc.html?autoconnect=true&password=4b1478417d084de2',
     'agent3': 'https://l-linux-3iouwxahdd.containers.cloud.trycua.com/vnc.html?autoconnect=true&password=248458781f94801e'
   };

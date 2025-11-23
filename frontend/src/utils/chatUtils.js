@@ -24,7 +24,14 @@ export const formatTime = (date) => {
     return '—';
   }
   const safeDate = ensureDate(date);
-  return safeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Format time in EST timezone with explicit timezone display
+  return safeDate.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone: 'America/New_York',
+    timeZoneName: 'short'
+  });
 };
 
 export const buildAgentMessage = (item) => {

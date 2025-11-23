@@ -385,24 +385,20 @@ def get_agent_responses(limit: int = 60):
             
             message_lower = message_text.lower().strip()
             
-            # Check metadata first - if it's from trajectory source, it's meaningful (keep it)
-            if metadata and metadata.get("source") == "trajectory":
-                return False
-            
-            # Check metadata - if it's marked as agent_response, it's meaningful (keep it)
-            if metadata and metadata.get("type") == "agent_response":
-                return False
+            # Check metadata first - if it's from agent output, trajectory, or marked as agent_response, keep it
+            if metadata:
+                source = metadata.get("source")
+                msg_type = metadata.get("type")
+                if source in ["trajectory", "agent_output"] or msg_type == "agent_response":
+                    return False
             
             # Check if message matches any system pattern
             for pattern in system_message_patterns:
                 if pattern in message_lower:
                     return True
             
-            # Very short messages (less than 10 chars) are likely system messages
-            if len(message_text.strip()) < 10:
-                return True
-            
             # Default: keep the message (it's likely meaningful)
+            # Removed the 10-character minimum filter to allow short responses like "Hello!"
             return False
         
         # Filter out system messages and prioritize meaningful content
@@ -415,16 +411,17 @@ def get_agent_responses(limit: int = 60):
             if is_system_message(message_text, metadata):
                 continue
             
-            # Prioritize messages from trajectory (actual agent responses)
+            # Prioritize messages from trajectory or agent output (actual agent responses)
             priority = 0
-            if metadata.get("source") == "trajectory" or metadata.get("type") == "agent_response":
+            if metadata.get("source") in ["trajectory", "agent_output"] or metadata.get("type") == "agent_response":
                 priority = 1
             
             meaningful_logs.append((priority, log))
         
-        # Sort by priority (trajectory messages first), then by timestamp
+        # Sort by timestamp chronologically (oldest first)
         def get_sort_key(item):
             priority, log = item
+            # MongoDB stores timestamp as 'created_at'
             timestamp = log.get("created_at") or log.get("timestamp")
             # Convert timestamp to comparable value
             if isinstance(timestamp, datetime):
@@ -436,9 +433,9 @@ def get_agent_responses(limit: int = 60):
                     ts_value = 0
             else:
                 ts_value = 0
-            return (priority, ts_value)
+            return ts_value
         
-        meaningful_logs.sort(key=get_sort_key, reverse=True)
+        meaningful_logs.sort(key=get_sort_key, reverse=False)  # Oldest first for chronological order
         
         # Get the top meaningful logs
         filtered_logs = [log for _, log in meaningful_logs[:limit * 2]]  # Get 2x limit after filtering
@@ -486,7 +483,8 @@ def get_agent_responses(limit: int = 60):
                 log_id = str(log.get("_id", ""))
                 agent_id = log.get("agent_id", "agent")
                 message_text = log.get("message", "")
-                timestamp = log.get("timestamp") or log.get("created_at")
+                # MongoDB stores timestamp as 'created_at', use that as primary source
+                timestamp = log.get("created_at") or log.get("timestamp")
                 task_id = None
                 
                 # Skip empty messages
@@ -510,12 +508,19 @@ def get_agent_responses(limit: int = 60):
                 if task_id and task_id in progress_map:
                     progress_percent = progress_map[task_id]
                 
-                # Format timestamp
-                if isinstance(timestamp, str):
+                # Format timestamp - ensure proper conversion from MongoDB datetime
+                if isinstance(timestamp, datetime):
+                    # Already a datetime object from MongoDB
+                    pass
+                elif isinstance(timestamp, str):
                     try:
                         timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                     except:
-                        timestamp = datetime.now(timezone.utc)
+                        try:
+                            # Try parsing ISO format with Z
+                            timestamp = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+                        except:
+                            timestamp = datetime.now(timezone.utc)
                 elif not timestamp:
                     timestamp = datetime.now(timezone.utc)
                 
@@ -532,8 +537,8 @@ def get_agent_responses(limit: int = 60):
                 # Skip malformed logs
                 continue
         
-        # Sort by timestamp descending
-        messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        # Sort by timestamp ascending (chronological order - oldest first)
+        messages.sort(key=lambda x: x.get("timestamp", ""), reverse=False)
         
         return {
             "messages": messages[:limit],
