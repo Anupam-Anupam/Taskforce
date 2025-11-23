@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import AgentLiveFeed from './components/AgentLiveFeed';
+import EvaluatorView from './components/EvaluatorView';
 import ChatPopup from './components/ChatPopup';
 import './App.css';
 
 function App() {
+  const [activeTab, setActiveTab] = useState('agents');
+
   return (
     <div className="app">
       <div className="background-gradient" aria-hidden="true">
@@ -36,9 +40,28 @@ function App() {
           </div>
         </header>
 
+        {/* Tab Navigation */}
+        <nav className="app-tabs">
+          <button
+            className={`app-tab ${activeTab === 'agents' ? 'app-tab--active' : ''}`}
+            onClick={() => setActiveTab('agents')}
+          >
+            <span className="app-tab__icon">🤖</span>
+            <span className="app-tab__label">Agents</span>
+          </button>
+          <button
+            className={`app-tab ${activeTab === 'evaluator' ? 'app-tab--active' : ''}`}
+            onClick={() => setActiveTab('evaluator')}
+          >
+            <span className="app-tab__icon">📊</span>
+            <span className="app-tab__label">Evaluator</span>
+          </button>
+        </nav>
+
         <main className="app-main">
           <section className="app-main__primary">
-            <AgentLiveFeed />
+            {activeTab === 'agents' && <AgentLiveFeed />}
+            {activeTab === 'evaluator' && <EvaluatorView />}
           </section>
         </main>
       </div>

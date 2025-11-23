@@ -91,7 +91,7 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 20px;
 }
 
 .app-header {
@@ -985,6 +985,17 @@ body {
   40% { transform: scale(1); opacity: 1; }
 }
 
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.2);
+  }
+}
+
 @media (max-width: 1280px) {
   .app-shell {
     padding: 26px 22px 34px;
@@ -1037,4 +1048,181 @@ body {
   .live-feed__header h1 {
     font-size: 1.5rem;
   }
+}
+
+/* Tab Navigation */
+.app-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0;
+  border-bottom: 2px solid rgba(124, 217, 107, 0.2);
+}
+
+.app-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--muted-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+  bottom: -2px;
+}
+
+.app-tab:hover {
+  color: var(--text-color);
+  background: rgba(124, 217, 107, 0.05);
+}
+
+.app-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.app-tab__icon {
+  font-size: 1.2rem;
+}
+
+.app-tab__label {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Evaluator View */
+.evaluator-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.evaluator-header {
+  margin-bottom: 8px;
+}
+
+.evaluator-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0 0 8px 0;
+}
+
+.evaluator-header p {
+  font-size: 0.95rem;
+  color: var(--muted-text);
+  margin: 0;
+}
+
+.evaluator-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.evaluator-card {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-medium);
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+  transition: var(--transition);
+}
+
+.evaluator-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.evaluator-card--wide {
+  grid-column: 1 / -1;
+}
+
+.evaluator-card__header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(124, 217, 107, 0.05);
+}
+
+.evaluator-card__header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.evaluator-card__body {
+  padding: 24px;
+}
+
+/* Metrics */
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.metric-row:last-child {
+  border-bottom: none;
+}
+
+.metric-label {
+  font-size: 0.9rem;
+  color: var(--muted-text);
+}
+
+.metric-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Agent Scores */
+.agent-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.agent-score:last-child {
+  margin-bottom: 0;
+}
+
+.agent-name {
+  min-width: 100px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.score-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.score-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.score-value {
+  min-width: 50px;
+  text-align: right;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
 }

@@ -1,58 +1,42 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { API_BASE, REFRESH_INTERVALS } from '../config';
 
-const ensureDate = (value) => {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value;
+// Utility: ensure we have a Date object
+const ensureDate = (val) => {
+  if (val instanceof Date) return val;
+  if (typeof val === 'string' || typeof val === 'number') {
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? new Date() : d;
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return new Date();
-  }
-  return date;
+  return new Date();
 };
 
-const normalizePercent = (value) => {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  return Math.max(0, Math.min(100, parsed));
+// Normalize progress percent to 0-100
+const normalizePercent = (val) => {
+  if (val == null || val === '') return null;
+  const num = parseFloat(val);
+  if (isNaN(num)) return null;
+  return Math.max(0, Math.min(100, num));
 };
 
-const formatPercentLabel = (value) => {
-  const percent = normalizePercent(value);
-  if (percent === null) {
-    return null;
-  }
-  return `${percent.toFixed(0)}%`;
+const formatPercentLabel = (val) => {
+  const p = normalizePercent(val);
+  return p !== null ? `${Math.round(p)}%` : null;
 };
 
-const buildAgentMessage = (record) => {
-  if (!record || record.id === undefined || record.id === null) {
-    return null;
-  }
-
-  const timestamp = ensureDate(record.timestamp);
-  const progressPercent = normalizePercent(record.progress_percent);
-  // Ensure message is a string before calling trim
-  const messageStr = record.message ? String(record.message) : '';
-  const text = (messageStr && messageStr.trim().length > 0)
-    ? messageStr
-    : (progressPercent !== null
-      ? `Progress update: ${progressPercent.toFixed(0)}% complete.`
-      : 'Progress update received.');
-
+// Build a chat message from agent response data
+const buildAgentMessage = (item) => {
+  if (!item || !item.id) return null;
   return {
-    id: `agent-response-${record.id}`,
+    id: item.id,
+    agentId: item.agent_id || 'unknown',
     sender: 'agent',
-    agentId: record.agent_id || 'agent',
-    text,
-    timestamp,
-    taskId: record.task_id ?? null,
-    progressPercent,
-    taskTitle: record.task?.title ?? null,
-    taskStatus: record.task?.status ?? null,
+    text: item.message || '',
+    timestamp: ensureDate(item.timestamp),
+    progressPercent: item.progress_percent,
+    taskId: item.task?.id || item.task_id,
+    taskTitle: item.task?.title,
+    taskStatus: item.task?.status,
   };
 };
 
@@ -80,8 +64,12 @@ const ChatTerminal = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const abortRef = useRef(false);
+  const prevMessageCountRef = useRef(0);
 
   const upsertMessages = useCallback((incoming = []) => {
     if (!incoming.length) {
@@ -98,13 +86,23 @@ const ChatTerminal = () => {
         map.set(msg.id, { ...msg, timestamp });
       });
 
-      return Array.from(map.values()).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      // Sort by timestamp and keep only the last 50 messages
+      const sortedMessages = Array.from(map.values()).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      return sortedMessages.slice(-50);
     });
   }, []);
 
-  const fetchAgentResponses = useCallback(async () => {
+  const lastFetchTimeRef = useRef(null);
+
+  const fetchAgentResponses = useCallback(async (isInitial = false) => {
     try {
-      const response = await fetch(`${API_BASE}/chat/agent-responses?limit=60`);
+      // Build URL with optional 'since' parameter for incremental updates
+      let url = `${API_BASE}/chat/agent-responses?limit=50`;
+      if (!isInitial && lastFetchTimeRef.current) {
+        url += `&since=${encodeURIComponent(lastFetchTimeRef.current)}`;
+      }
+      
+      const response = await fetch(url);
       const data = await response.json();
 
       if (!response.ok) {
@@ -121,6 +119,11 @@ const ChatTerminal = () => {
 
       if (normalized.length) {
         upsertMessages(normalized);
+        // Update last fetch time to the most recent message timestamp
+        const latestTimestamp = normalized[0]?.timestamp;
+        if (latestTimestamp) {
+          lastFetchTimeRef.current = latestTimestamp.toISOString();
+        }
       }
       setHistoryError(null);
     } catch (error) {
@@ -139,8 +142,11 @@ const ChatTerminal = () => {
   useEffect(() => {
     abortRef.current = false;
 
-    fetchAgentResponses();
-    const intervalId = setInterval(fetchAgentResponses, REFRESH_INTERVALS.chat);
+    // Initial fetch gets all messages
+    fetchAgentResponses(true);
+    
+    // Subsequent fetches only get new messages
+    const intervalId = setInterval(() => fetchAgentResponses(false), REFRESH_INTERVALS.chat);
 
     return () => {
       abortRef.current = true;
@@ -148,8 +154,30 @@ const ChatTerminal = () => {
     };
   }, [fetchAgentResponses]);
 
-  useEffect(() => {
+  // Check if user is scrolled to bottom
+  const checkScrollPosition = useCallback(() => {
+    if (!messagesContainerRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
+    
+    setShowScrollButton(!isAtBottom);
+    
+    // Clear new message indicator if at bottom
+    if (isAtBottom) {
+      setHasNewMessages(false);
+    }
+  }, []);
+
+  // Scroll to bottom function
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setHasNewMessages(false);
+  }, []);
+
+  // Effect to update prevMessageCountRef when messages change
+  useEffect(() => {
+    prevMessageCountRef.current = messages.length;
   }, [messages]);
 
   const handleSubmit = async (e) => {
@@ -159,6 +187,7 @@ const ChatTerminal = () => {
     const taskText = inputValue.trim();
     const taskTimestamp = new Date();
 
+    // Add user message to chat like a group chat
     const userMessage = {
       id: `user-${Date.now()}`,
       sender: 'user',
@@ -191,15 +220,8 @@ const ChatTerminal = () => {
       setMessages((prev) => prev.filter((msg) => !msg.isThinking));
 
       if (response.ok) {
-        const taskMessage = {
-          id: `task-${data.task_id}`,
-          sender: 'system',
-          text: `[Task created] ${taskText}`,
-          timestamp: new Date(),
-          taskId: data.task_id,
-        };
-        upsertMessages([taskMessage]);
-        fetchAgentResponses();
+        // Don't add task creation message - only show final agent responses
+        // The agent response will appear automatically when it completes
       } else {
         throw new Error(data.detail || 'Failed to create task');
       }
@@ -228,15 +250,20 @@ const ChatTerminal = () => {
         </div>
       </header>
 
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '20px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '15px',
-        backgroundColor: '#151c19'
-      }}>
+      <div 
+        ref={messagesContainerRef}
+        onScroll={checkScrollPosition}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '15px',
+          backgroundColor: '#151c19',
+          position: 'relative'
+        }}
+      >
         {historyLoading && (
           <div style={{ color: '#a9b0c5', fontSize: '0.95rem' }}>
             Loading conversation…
@@ -262,109 +289,163 @@ const ChatTerminal = () => {
         )}
 
         {messages.map((message) => {
-          const accentColor = message.sender === 'user'
-            ? '#f4bf67'
-            : message.sender === 'system'
-              ? '#7ab8ff'
-              : '#88d6a4';
+          // Agent color mapping for group chat style
+          const agentColors = {
+            'agent1': { bg: '#88d6a4', name: 'Agent 1', emoji: '🤖' },
+            'agent2': { bg: '#7ab8ff', name: 'Agent 2', emoji: '🦾' },
+            'agent3': { bg: '#f4bf67', name: 'Agent 3', emoji: '🧠' },
+            'system': { bg: '#a9b0c5', name: 'System', emoji: '⚙️' },
+            'user': { bg: '#e89ac7', name: 'You', emoji: '👤' }
+          };
+
+          const agentInfo = agentColors[message.agentId] || agentColors[message.sender] || agentColors['system'];
 
           return (
             <div
               key={message.id}
               style={{
-                padding: '12px 16px',
-                borderRadius: '12px',
-                backgroundColor: message.sender === 'user'
-                  ? 'rgba(244, 191, 103, 0.16)'
-                  : message.sender === 'system'
-                    ? 'rgba(122, 184, 255, 0.14)'
-                    : 'rgba(136, 214, 164, 0.14)',
-                borderLeft: `3px solid ${accentColor}`,
-                color: '#f6f1e6',
                 display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
+                gap: '12px',
+                alignItems: 'flex-start'
               }}
             >
+              {/* Avatar */}
               <div style={{
-                fontSize: '0.85rem',
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                backgroundColor: agentInfo.bg,
                 display: 'flex',
-                justifyContent: 'space-between',
                 alignItems: 'center',
-                opacity: 0.86
+                justifyContent: 'center',
+                fontSize: '1.3rem',
+                flexShrink: 0,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
               }}>
-                <span style={{ fontWeight: 'bold' }}>
-                  {getSenderLabel(message)}
-                </span>
-                {!message.isThinking && (
-                  <span style={{ fontSize: '0.75rem', color: '#868ea4' }}>{formatTime(message.timestamp)}</span>
-                )}
+                {agentInfo.emoji}
               </div>
+
+              {/* Message bubble */}
               <div style={{
-                fontSize: '0.95rem',
-                wordBreak: 'break-word',
+                flex: 1,
                 display: 'flex',
-                flexWrap: 'wrap',
-                gap: '10px',
-                alignItems: 'center'
+                flexDirection: 'column',
+                gap: '6px'
               }}>
-                <span>{message.text ? String(message.text) : ''}</span>
-                {message.isThinking && (
-                  <span style={{ display: 'inline-flex', gap: '4px', marginLeft: '8px' }}>
-                    <span style={{ animation: 'blink 1.4s infinite' }}>.</span>
-                    <span style={{ animation: 'blink 1.4s infinite 0.2s' }}>.</span>
-                    <span style={{ animation: 'blink 1.4s infinite 0.4s' }}>.</span>
-                  </span>
-                )}
-                {!message.isThinking && formatPercentLabel(message.progressPercent) && (
-                  <span style={{
-                    padding: '2px 8px',
-                    borderRadius: '999px',
-                    border: `1px solid ${accentColor}`,
-                    fontSize: '0.8rem'
-                  }}>
-                    {formatPercentLabel(message.progressPercent)}
-                  </span>
-                )}
-              </div>
-              {(message.taskId || message.taskTitle || message.taskStatus) && (
+                {/* Header: name and time */}
                 <div style={{
-                  fontSize: '0.75rem',
-                  color: accentColor,
-                  opacity: 0.9,
                   display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '10px'
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '0.85rem'
                 }}>
-                  {message.taskId && <span>Task #{message.taskId}</span>}
-                  {message.taskTitle && <span>{message.taskTitle}</span>}
-                  {message.taskStatus && <span>Status: {message.taskStatus}</span>}
+                  <span style={{ 
+                    fontWeight: 'bold',
+                    color: agentInfo.bg
+                  }}>
+                    {agentInfo.name}
+                  </span>
+                  {!message.isThinking && (
+                    <span style={{ 
+                      fontSize: '0.75rem', 
+                      color: '#868ea4',
+                      opacity: 0.8
+                    }}>
+                      {formatTime(message.timestamp)}
+                    </span>
+                  )}
                 </div>
-              )}
-              {(message.taskId || message.taskTitle || message.taskStatus) && (
-                <div className="chat-message__tags">
-                  {message.taskId && <span>Task #{message.taskId}</span>}
-                  {message.taskTitle && <span>{message.taskTitle}</span>}
-                  {message.taskStatus && <span>Status: {message.taskStatus}</span>}
+
+                {/* Message content bubble */}
+                <div style={{
+                  backgroundColor: '#2a3530',
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  borderTopLeftRadius: '4px',
+                  color: '#e0e8e5',
+                  fontSize: '0.95rem',
+                  lineHeight: '1.5',
+                  wordBreak: 'break-word',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                  position: 'relative'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                    alignItems: 'center'
+                  }}>
+                    <span>{message.text ? String(message.text) : ''}</span>
+                    {message.isThinking && (
+                      <span style={{ display: 'inline-flex', gap: '4px' }}>
+                        <span style={{ animation: 'blink 1.4s infinite' }}>.</span>
+                        <span style={{ animation: 'blink 1.4s infinite 0.2s' }}>.</span>
+                        <span style={{ animation: 'blink 1.4s infinite 0.4s' }}>.</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Progress badge */}
+                  {!message.isThinking && formatPercentLabel(message.progressPercent) && (
+                    <div style={{
+                      marginTop: '8px',
+                      display: 'inline-block'
+                    }}>
+                      <span style={{
+                        padding: '4px 10px',
+                        borderRadius: '12px',
+                        backgroundColor: agentInfo.bg,
+                        color: '#1a2420',
+                        fontSize: '0.8rem',
+                        fontWeight: 'bold',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                      }}>
+                        {formatPercentLabel(message.progressPercent)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Task metadata */}
+                  {(message.taskId || message.taskTitle || message.taskStatus) && (
+                    <div style={{
+                      marginTop: '8px',
+                      fontSize: '0.75rem',
+                      color: '#a9b0c5',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      opacity: 0.8
+                    }}>
+                      {message.taskId && <span>#{message.taskId}</span>}
+                      {message.taskTitle && <span>• {message.taskTitle}</span>}
+                      {message.taskStatus && <span>• {message.taskStatus}</span>}
+                    </div>
+                  )}
                 </div>
-              )}
-              {(message.taskId || message.taskTitle || message.taskStatus) && (
-                <div className="chat-message__tags">
-                  {message.taskId && <span>Task #{message.taskId}</span>}
-                  {message.taskTitle && <span>{message.taskTitle}</span>}
-                  {message.taskStatus && <span>Status: {message.taskStatus}</span>}
-                </div>
-              )}
+              </div>
             </div>
           );
         })}
         <div ref={messagesEndRef} />
+        {showScrollButton && (
+          <button 
+            className={`scroll-to-bottom-button ${showScrollButton ? 'show' : ''}`}
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14"></path>
+              <path d="m19 12-7 7-7-7"></path>
+            </svg>
+            {hasNewMessages && <span className="scroll-to-bottom-button__dot" />}
+          </button>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} style={{
         padding: '15px',
-        backgroundColor: 'rgba(17, 20, 33, 0.98)',
-        borderTop: '1px solid rgba(90, 101, 149, 0.9)',
+        backgroundColor: '#2e3a36',
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
         display: 'flex',
         gap: '10px'
       }}>
@@ -377,10 +458,10 @@ const ChatTerminal = () => {
           style={{
             flex: 1,
             padding: '12px 15px',
-            backgroundColor: '#121623',
-            border: '1px solid rgba(90, 101, 149, 0.9)',
+            backgroundColor: '#3a4a45',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
             borderRadius: '999px',
-            color: '#f6f1e6',
+            color: '#e0e8e5',
             fontSize: '0.95rem',
             outline: 'none'
           }}
@@ -390,9 +471,9 @@ const ChatTerminal = () => {
           disabled={!inputValue.trim() || isLoading}
           className="chat-terminal__send"
         >
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <path d="M22 2L15 22 11 13 2 9 22 2z"></path>
           </svg>
           Send
         </button>
