@@ -61,7 +61,7 @@ services:
       dockerfile: agents/agent1/agent_worker/Dockerfile
     environment:
       - POSTGRES_URL=postgresql://hub:hubpassword@postgres:5432/hub
-      - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent_logs_db?authSource=admin
+      - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent1db?authSource=admin
       - AGENT_ID=agent1
       - POLL_INTERVAL_SECONDS=5
       - RUN_TASK_TIMEOUT_SECONDS=300
@@ -82,7 +82,7 @@ services:
       dockerfile: agents/agent2/agent_worker/Dockerfile
     environment:
       - POSTGRES_URL=postgresql://hub:hubpassword@postgres:5432/hub
-      - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent_logs_db?authSource=admin
+      - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent2db?authSource=admin
       - AGENT_ID=agent2
       - POLL_INTERVAL_SECONDS=5
       - RUN_TASK_TIMEOUT_SECONDS=300
@@ -103,13 +103,33 @@ services:
       dockerfile: agents/agent3/agent_worker/Dockerfile
     environment:
       - POSTGRES_URL=postgresql://hub:hubpassword@postgres:5432/hub
-      - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent_logs_db?authSource=admin
+      - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent3db?authSource=admin
       - AGENT_ID=agent3
       - POLL_INTERVAL_SECONDS=5
       - RUN_TASK_TIMEOUT_SECONDS=300
       - CUA_API_KEY=${CUA_API_KEY}
       - CUA_SANDBOX_NAME=${CUA_SANDBOX_NAME}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+    networks:
+      - ai-village-network
+    depends_on:
+      - postgres
+      - mongodb
+    restart: unless-stopped
+
+  # Evaluator Agent - evaluates agent performance and generates reports
+  evaluator_agent:
+    build:
+      context: .
+      dockerfile: agents/agent1/evaluator_agent/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - MONGODB_URL=mongodb://admin:password@mongodb:27017?authSource=admin
+      - POSTGRES_URL=postgresql://hub:hubpassword@postgres:5432/hub
+      - DEFAULT_AGENT_ID=agent1
+      - LOG_LEVEL=INFO
+      - SCHEDULE_INTERVAL_SECONDS=60
     networks:
       - ai-village-network
     depends_on:

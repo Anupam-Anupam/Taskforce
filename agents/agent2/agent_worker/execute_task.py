@@ -276,6 +276,13 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                                 if text:
                                     collected_outputs.append(text)
                                     print(f"Agent: {text}")
+                                    if mongo_client:
+                                        mongo_client.write_log(
+                                            task_id=task_id,
+                                            level="info",
+                                            message=text,
+                                            meta={"source": "agent_output"}
+                                        )
                         elif item_type == "computer_call":
                             action = item.get("action", {})
                             action_type = action.get("type", "")
@@ -324,6 +331,13 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
                                         if text:
                                             collected_outputs.append(text)
                                             print(f"Agent: {text}")
+                                            if mongo_client:
+                                                mongo_client.write_log(
+                                                    task_id=task_id,
+                                                    level="info",
+                                                    message=text,
+                                                    meta={"source": "agent_output"}
+                                                )
                                 elif item_type == "computer_call_output":
                                     print(f"Computer Output: [Result]")
                         

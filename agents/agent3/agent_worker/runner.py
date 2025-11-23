@@ -120,7 +120,7 @@ class AgentRunner:
             # Log task picked
             self.mongo.write_log(
                 task_id=task_id,
-                level="info",
+                level="debug",
                 message=f"Task picked: {task.get('title', 'Unknown')}",
                 meta={"task_id": task_id, "title": task.get("title")}
             )
@@ -205,14 +205,14 @@ class AgentRunner:
                 if stdout:
                     self.mongo.write_log(
                         task_id=task_id,
-                        level="info",
+                        level="debug",
                         message="execute_task.py stdout",
                         meta={"stdout": stdout}
                     )
                 if stderr:
                     self.mongo.write_log(
                         task_id=task_id,
-                        level="warning" if return_code == 0 else "error",
+                        level="debug",
                         message="execute_task.py stderr",
                         meta={"stderr": stderr}
                     )
