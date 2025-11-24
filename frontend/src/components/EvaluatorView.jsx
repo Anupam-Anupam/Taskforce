@@ -71,6 +71,7 @@ const EvaluatorView = () => {
     tasksEvaluated: evaluatorData?.tasks_evaluated || 0,
     averageScore: evaluatorData?.average_score || 0,
   };
+  const agentScores = evaluatorData?.agent_scores || {};
   const recentEvaluations = evaluatorData?.recent_evaluations || [];
 
   return (
@@ -128,23 +129,38 @@ const EvaluatorView = () => {
             <div className="agent-score">
               <span className="agent-name">🤖 Agent 1</span>
               <div className="score-bar">
-                <div className="score-fill" style={{ width: '0%' }}></div>
+                <div className="score-fill" style={{ 
+                  width: `${agentScores.agent1?.score || 0}%`,
+                  backgroundColor: (agentScores.agent1?.score || 0) >= 70 ? '#22c55e' : '#f59e0b'
+                }}></div>
               </div>
-              <span className="score-value">—</span>
+              <span className="score-value">
+                {agentScores.agent1 ? `${agentScores.agent1.score.toFixed(1)}%` : '—'}
+              </span>
             </div>
             <div className="agent-score">
               <span className="agent-name">🦾 Agent 2</span>
               <div className="score-bar">
-                <div className="score-fill" style={{ width: '0%' }}></div>
+                <div className="score-fill" style={{ 
+                  width: `${agentScores.agent2?.score || 0}%`,
+                  backgroundColor: (agentScores.agent2?.score || 0) >= 70 ? '#22c55e' : '#f59e0b'
+                }}></div>
               </div>
-              <span className="score-value">—</span>
+              <span className="score-value">
+                {agentScores.agent2 ? `${agentScores.agent2.score.toFixed(1)}%` : '—'}
+              </span>
             </div>
             <div className="agent-score">
               <span className="agent-name">🧠 Agent 3</span>
               <div className="score-bar">
-                <div className="score-fill" style={{ width: '0%' }}></div>
+                <div className="score-fill" style={{ 
+                  width: `${agentScores.agent3?.score || 0}%`,
+                  backgroundColor: (agentScores.agent3?.score || 0) >= 70 ? '#22c55e' : '#f59e0b'
+                }}></div>
               </div>
-              <span className="score-value">—</span>
+              <span className="score-value">
+                {agentScores.agent3 ? `${agentScores.agent3.score.toFixed(1)}%` : '—'}
+              </span>
             </div>
           </div>
         </div>

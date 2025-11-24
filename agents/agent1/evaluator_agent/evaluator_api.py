@@ -73,11 +73,31 @@ def create_app() -> FastAPI:
             total_score = 0
             score_count = 0
             
+            # Track latest score per agent for the current task
+            agent_scores = {}
+            
             for report in all_reports:
-                if report.get("agent_id"):
-                    agents.add(report["agent_id"])
+                agent_id = report.get("agent_id")
+                if agent_id:
+                    agents.add(agent_id)
+                    
+                    # Get the latest score for each agent
+                    if report.get("scores") and isinstance(report["scores"], dict):
+                        final_score = report["scores"].get("final_score", 0)
+                        # Convert to percentage if it's a fraction (0-1)
+                        if final_score <= 1.0:
+                            final_score *= 100
+                        
+                        # Update agent score (will keep updating to latest)
+                        agent_scores[agent_id] = {
+                            "score": round(final_score, 2),
+                            "task_id": report.get("task_id"),
+                            "evaluated_at": report.get("evaluated_at")
+                        }
+                
                 if report.get("task_id"):
                     tasks.add(report["task_id"])
+                    
                 if report.get("scores") and isinstance(report["scores"], dict):
                     # Try overall_score first, then final_score
                     overall_score = report["scores"].get("overall_score") or report["scores"].get("final_score", 0)
@@ -97,6 +117,7 @@ def create_app() -> FastAPI:
                 "agents_evaluated": len(agents),
                 "tasks_evaluated": len(tasks),
                 "average_score": round(avg_score, 2),
+                "agent_scores": agent_scores,
                 "recent_evaluations": all_reports[:5] if all_reports else []
             }
         except Exception as e:
@@ -108,7 +129,8 @@ def create_app() -> FastAPI:
                 "status": "error",
                 "error": str(e),
                 "scheduler_active": False,
-                "total_evaluations": 0
+                "total_evaluations": 0,
+                "agent_scores": {}
             }
 
     @app.get("/task/{task_id}")

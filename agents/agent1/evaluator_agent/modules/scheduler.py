@@ -109,7 +109,9 @@ class EvaluatorScheduler:
 
                 task_id = report["task_id"]
                 agent_id = report["agent_id"]
-                self._reports_by_task[task_id] = report
+                # Store with composite key to keep all agent evaluations of the same task
+                composite_key = f"{task_id}_{agent_id}"
+                self._reports_by_task[composite_key] = report
                 # Append to agent history (dedupe by evaluated_at for the task)
                 self._reports_by_agent.setdefault(agent_id, [])
                 existing_agent = self._reports_by_agent[agent_id]

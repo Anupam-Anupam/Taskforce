@@ -101,8 +101,8 @@ class DataCollector:
 
     def collect_all(self) -> List[Dict[str, Any]]:
         """
-        Collect data for the most recent task only (not all tasks).
-        The evaluator should focus on evaluating the latest task in the system.
+        Collect data for the most recent task, evaluated for each agent individually.
+        The evaluator evaluates how each agent (agent1, agent2, agent3) performed on the same task.
         """
         # Get recent tasks from PostgreSQL
         tasks = self.pg.get_tasks(limit=100)
@@ -117,23 +117,32 @@ class DataCollector:
         )
         
         task_id = self._normalize_id(most_recent_task.get("id"))
-        agent_id = self._normalize_id(most_recent_task.get("agent_id"))
         
         if not task_id:
             self.logger.error(json.dumps({"event": "invalid_task_id", "task": most_recent_task}))
             return []
         
+        # Evaluate the most recent task for each agent separately
+        agent_ids = ["agent1", "agent2", "agent3"]
         results: List[Dict[str, Any]] = []
-        try:
-            results.append(self.collect_for_task(agent_id, task_id))
-            self.logger.info(json.dumps({
-                "event": "collecting_most_recent_task",
-                "task_id": task_id,
-                "agent_id": agent_id,
-                "status": most_recent_task.get("status")
-            }))
-        except Exception as e:
-            self.logger.error(json.dumps({"event": "collect_task_error", "task_id": task_id, "error": str(e)}))
+        
+        for agent_id in agent_ids:
+            try:
+                data = self.collect_for_task(agent_id, task_id)
+                results.append(data)
+                self.logger.info(json.dumps({
+                    "event": "collecting_most_recent_task_for_agent",
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "status": most_recent_task.get("status")
+                }))
+            except Exception as e:
+                self.logger.error(json.dumps({
+                    "event": "collect_task_error",
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "error": str(e)
+                }))
         
         return results
 
