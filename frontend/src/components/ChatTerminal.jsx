@@ -31,12 +31,13 @@ const ChatTerminal = () => {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
+  const composerRef = useRef(null);
   const abortRef = useRef(false);
   const prevMessageCountRef = useRef(0);
   const [agentsStatus, setAgentsStatus] = useState({});
   const [mentionQuery, setMentionQuery] = useState('');
   const [isMentionMenuVisible, setMentionMenuVisible] = useState(false);
-  const [mentionCoords, setMentionCoords] = useState({ left: 0, bottom: 0 });
+  const [mentionCoords, setMentionCoords] = useState({ left: 0, top: 0 });
 
   const upsertMessages = useCallback((incoming = [], { restampNew = false } = {}) => {
     if (!incoming.length) {
@@ -77,8 +78,6 @@ const ChatTerminal = () => {
     });
   }, []);
 
-  const taggedAgents = useMemo(() => detectTaggedAgents(inputValue), [inputValue]);
-
   const fetchAgentsStatus = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/agents/status`);
@@ -106,13 +105,15 @@ const ChatTerminal = () => {
     if (mentionMatch) {
       setMentionQuery(mentionMatch[1].toLowerCase());
       setMentionMenuVisible(true);
-      // position menu near input (simple approach: align to input box)
-      if (inputRef.current) {
-        const rect = inputRef.current.getBoundingClientRect();
+      if (inputRef.current && composerRef.current) {
+        const inputRect = inputRef.current.getBoundingClientRect();
+        const composerRect = composerRef.current.getBoundingClientRect();
         setMentionCoords({
-          left: rect.left,
-          bottom: rect.height + 8,
+          left: Math.max(0, inputRect.left - composerRect.left),
+          top: inputRect.top - composerRect.top,
         });
+      } else {
+        setMentionCoords({ left: 0, top: 0 });
       }
     } else {
       setMentionMenuVisible(false);
@@ -139,6 +140,12 @@ const ChatTerminal = () => {
       !query || agentId.toLowerCase().includes(query)
     );
   }, [mentionQuery]);
+
+  const resolvedStatus = useCallback((agentId) => {
+    const raw = agentsStatus[agentId];
+    if (!raw) return 'online'; // default optimistic
+    return raw === 'stopped' ? 'offline' : 'online';
+  }, [agentsStatus]);
 
   const insertMention = useCallback((agentId) => {
     if (!inputRef.current) return;
@@ -352,24 +359,6 @@ const ChatTerminal = () => {
       setIsLoading(false);
     }
   };
-
-  const handleAgentToggle = useCallback((agentId) => {
-    setInputValue((prev) => {
-      const regex = new RegExp(`@${agentId}\\b`, 'gi');
-      const hasTag = regex.test(prev);
-      if (hasTag) {
-        return prev.replace(regex, '').replace(/\s{2,}/g, ' ').trimStart();
-      }
-      const spacer = prev && !prev.endsWith(' ') ? ' ' : '';
-      return `${prev}${spacer}@${agentId} `.replace(/\s{2,}/g, ' ');
-    });
-  }, []);
-
-  const handleClearTags = useCallback(() => {
-    setInputValue((prev) =>
-      prev.replace(/@agent[1-3]\b/gi, '').replace(/\s{2,}/g, ' ').trimStart()
-    );
-  }, []);
 
   // Show password screen if not authenticated
   if (!isAuthenticated) {
@@ -663,7 +652,7 @@ const ChatTerminal = () => {
         )}
       </div>
 
-      <div style={{
+      <div ref={composerRef} style={{
         padding: '24px',
         width: '100%',
         display: 'flex',
@@ -678,62 +667,6 @@ const ChatTerminal = () => {
           width: '100%',
           position: 'relative'
         }}>
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            marginBottom: '12px',
-            color: '#a3a3a3',
-            fontSize: '0.85rem'
-          }}>
-            <div>
-              <span style={{ fontWeight: 600, color: '#d4d4d4' }}>Targets:</span>{' '}
-              {taggedAgents.length ? taggedAgents.join(', ') : 'All Agents'}
-            </div>
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px'
-            }}>
-              {AVAILABLE_AGENTS.map((agentId) => {
-                const isActive = taggedAgents.includes(agentId);
-                return (
-                  <button
-                    type="button"
-                    key={agentId}
-                    onClick={() => handleAgentToggle(agentId)}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: '999px',
-                      border: `1px solid ${isActive ? '#7c3aed' : 'rgba(255,255,255,0.2)'}`,
-                      backgroundColor: isActive ? 'rgba(124,58,237,0.2)' : 'transparent',
-                      color: isActive ? '#c4b5fd' : '#a3a3a3',
-                      fontSize: '0.8rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    @{agentId}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={handleClearTags}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '999px',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  backgroundColor: 'transparent',
-                  color: '#a3a3a3',
-                  fontSize: '0.8rem',
-                  cursor: 'pointer'
-                }}
-              >
-                All Agents
-              </button>
-            </div>
-          </div>
           <input
             type="text"
             ref={inputRef}
@@ -761,23 +694,24 @@ const ChatTerminal = () => {
             disabled={!isAuthenticated || !inputValue.trim() || isLoading}
             style={{
               position: 'absolute',
-              right: '12px',
+              right: '10px',
               top: '50%',
               transform: 'translateY(-50%)',
               background: inputValue.trim() ? '#7c3aed' : 'transparent',
               color: inputValue.trim() ? '#ffffff' : '#737373',
               border: 'none',
-              borderRadius: '8px',
-              padding: '8px',
+              borderRadius: '50%',
+              width: '38px',
+              height: '38px',
               cursor: inputValue.trim() ? 'pointer' : 'default',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               transition: 'all 0.2s',
-              boxShadow: inputValue.trim() ? '0 0 15px rgba(124, 58, 237, 0.5)' : 'none'
+              boxShadow: inputValue.trim() ? '0 0 15px rgba(124, 58, 237, 0.4)' : 'none'
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"></line>
               <path d="M22 2L15 22 11 13 2 9 22 2z"></path>
             </svg>
@@ -787,49 +721,94 @@ const ChatTerminal = () => {
           <div
             style={{
               position: 'absolute',
-              bottom: mentionCoords.bottom + 80,
               left: mentionCoords.left,
-              backgroundColor: 'rgba(18,18,18,0.95)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              top: mentionCoords.top,
+              width: '320px',
+              backgroundColor: 'rgba(15, 15, 20, 0.98)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: '12px',
-              padding: '8px',
+              padding: '10px 0',
               display: 'flex',
               flexDirection: 'column',
               gap: '4px',
-              maxWidth: '280px',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
-              zIndex: 5
+              boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+              zIndex: 5,
+              transform: isMentionMenuVisible ? 'translateY(calc(-100% - 12px))' : 'translateY(calc(-100% - 2px))',
+              opacity: isMentionMenuVisible ? 1 : 0,
+              transition: 'opacity 0.15s ease, transform 0.15s ease'
             }}
           >
+            <div style={{ padding: '0 16px', fontSize: '0.75rem', letterSpacing: '0.05em', color: '#9ca3af' }}>
+              AGENTS
+            </div>
             {mentionOptions.map((agentId) => {
-              const isOnline = agentsStatus[agentId] === 'running';
+              const status = resolvedStatus(agentId);
+              const isOnline = status === 'online';
+              const handleMouseDown = (e) => {
+                e.preventDefault();
+                insertMention(agentId);
+              };
               return (
                 <button
                   key={agentId}
                   type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    insertMention(agentId);
-                  }}
+                  onMouseDown={handleMouseDown}
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
+                    padding: '10px 16px',
                     border: 'none',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    background: 'transparent',
+                    display: 'flex',
+                    width: '100%',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
                     color: '#e5e5e5',
                     cursor: 'pointer'
                   }}
                 >
-                  <span>@{agentId}</span>
-                  <span style={{ fontSize: '0.75rem', color: isOnline ? '#34d399' : '#f87171' }}>
-                    {isOnline ? 'online' : 'offline'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #1f2937, #111827)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1rem',
+                        textTransform: 'uppercase',
+                        color: '#c4c4c4',
+                        border: '1px solid rgba(255,255,255,0.08)'
+                      }}
+                    >
+                      {agentId.replace('agent', 'A')}
+                    </div>
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontWeight: 600, color: '#f3f4f6' }}>{agentId}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                        {isOnline ? 'Ready for tasks' : 'Agent unreachable'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span
+                      style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        backgroundColor: isOnline ? '#34d399' : '#f87171'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: isOnline ? '#d1fae5' : '#fecaca' }}>
+                      {isOnline ? 'online' : 'offline'}
+                    </span>
+                  </div>
                 </button>
               );
             })}
+            <div style={{ padding: '8px 16px 0 16px', fontSize: '0.7rem', color: '#6b7280', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              Click or keep typing to notify agents with access.
+            </div>
           </div>
         )}
       </div>

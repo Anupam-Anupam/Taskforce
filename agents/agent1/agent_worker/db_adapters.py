@@ -372,7 +372,8 @@ class MongoClientWrapper:
         task_id: Optional[int], 
         level: str, 
         message: str, 
-        meta: Optional[Dict[str, Any]] = None
+        meta: Optional[Dict[str, Any]] = None,
+        timestamp: Optional[datetime] = None
     ) -> None:
         """
         Write a log entry to MongoDB agent_logs collection.
@@ -384,14 +385,15 @@ class MongoClientWrapper:
             meta: Optional metadata dictionary
         """
         try:
+            ts = timestamp or datetime.utcnow()
             log_doc = {
                 "agent_id": self.agent_id,
                 "task_id": task_id,
                 "level": level,
                 "message": message,
                 "metadata": meta or {},
-                "timestamp": datetime.utcnow(),
-                "created_at": datetime.utcnow()
+                "timestamp": ts,
+                "created_at": ts
             }
             self.logs.insert_one(log_doc)
         except Exception as e:
