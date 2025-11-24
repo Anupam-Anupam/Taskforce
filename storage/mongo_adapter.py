@@ -121,7 +121,8 @@ class MongoAdapter:
         level: str,
         message: str,
         task_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        timestamp: Optional[datetime] = None
     ) -> str:
         """
         Write log entry to MongoDB.
@@ -131,6 +132,7 @@ class MongoAdapter:
             message: Log message
             task_id: Optional task identifier
             metadata: Optional additional metadata
+            timestamp: Optional explicit timestamp (if None, uses current time)
             
         Returns:
             Log entry ID
@@ -143,7 +145,8 @@ class MongoAdapter:
             message=message,
             agent_id=self.agent_id,
             task_id=task_id,
-            metadata=metadata
+            metadata=metadata,
+            timestamp=timestamp
         )
         result = self.logs.insert_one(log_entry)
         return str(result.inserted_id)

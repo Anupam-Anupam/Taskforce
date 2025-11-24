@@ -2,7 +2,17 @@
 FROM python:3.11-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini build-essential \
+    && apt-get install -y --no-install-recommends \
+        tini \
+        build-essential \
+        libexpat1 \
+        libgomp1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libfontconfig1 \
+        libice6 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

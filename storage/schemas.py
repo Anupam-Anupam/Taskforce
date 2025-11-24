@@ -29,7 +29,8 @@ class MongoSchema:
         message: str,
         agent_id: str,
         task_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        timestamp: Optional[datetime] = None
     ) -> Dict[str, Any]:
         """
         Log entry document structure.
@@ -40,17 +41,23 @@ class MongoSchema:
             agent_id: Agent identifier
             task_id: Optional task identifier
             metadata: Optional additional metadata
+            timestamp: Optional explicit timestamp (if None, uses current time)
             
         Returns:
             Dictionary matching MongoDB document schema
         """
+        # Use provided timestamp or current time
+        # This allows callers to set accurate timestamps for events that happened in the past
+        entry_time = timestamp if timestamp is not None else datetime.utcnow()
+        
         return {
             "level": level,
             "message": message,
             "agent_id": agent_id,
             "task_id": task_id,
             "metadata": metadata or {},
-            "created_at": datetime.utcnow()
+            "created_at": entry_time,
+            "timestamp": entry_time  # Also store as 'timestamp' for backward compatibility
         }
     
     # Memory entry schema

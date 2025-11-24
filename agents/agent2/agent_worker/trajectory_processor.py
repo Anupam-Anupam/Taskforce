@@ -1,6 +1,4 @@
-S C:\AI VILLAGE\v3\AI-Village-v2> docker ps --filter "name=mongodb"
-CONTAINER ID   IMAGE       COMMAND                  CREATED          STATUS                    PORTS                                             NAMES  
-93ff3a068521   mongo:7.0   "docker-entrypoint.s…"   53 minutes ago   Up 53 minutes (healthy)   0.0.0.0:27017->27017/tcp, [::]:27017->27017/tcp   ai-village-v2-mongodb-1"""
+"""
 Lean trajectory processor - watches CUA trajectory files and stores in MongoDB.
 """
 import json
@@ -145,6 +143,55 @@ class TrajectoryProcessor(FileSystemEventHandler):
             if str(file_path) not in self.processed_files:
                 self._process_file(file_path)
     
+    def _extract_timestamp_from_path(self, file_path: Path) -> Optional[datetime]:
+        """Extract timestamp from trajectory file path.
+        
+        Trajectory paths typically look like:
+        trajectories/agent2/121/20251123_215419_520685/trajectories/2025-11-23_omni_gpt5_215429_f354/turn_009/0031_api_start.json
+        
+        We extract from the parent directory name which has format: 2025-11-23_omni_gpt5_215429_f354
+        The timestamp is: 2025-11-23 21:54:29
+        """
+        try:
+            # Get parent directory name (e.g., "2025-11-23_omni_gpt5_215429_f354")
+            parent_dir = file_path.parent.name
+            
+            # Try to parse timestamp from directory name
+            # Format: 2025-11-23_omni_gpt5_215429_f354
+            # Extract: 2025-11-23 and 215429
+            if '_' in parent_dir:
+                parts = parent_dir.split('_')
+                if len(parts) >= 4:
+                    date_str = parts[0]  # 2025-11-23
+                    time_str = parts[3]  # 215429
+                    
+                    # Parse date and time
+                    if len(time_str) == 6:
+                        # Format: HHMMSS
+                        hour = time_str[0:2]
+                        minute = time_str[2:4]
+                        second = time_str[4:6]
+                        
+                        datetime_str = f"{date_str} {hour}:{minute}:{second}"
+                        return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+            
+            # Fallback: try to extract from grandparent (e.g., "20251123_215419_520685")
+            grandparent_dir = file_path.parent.parent.name
+            if '_' in grandparent_dir:
+                parts = grandparent_dir.split('_')
+                if len(parts) >= 2:
+                    date_str = parts[0]  # 20251123
+                    time_str = parts[1]  # 215419
+                    
+                    if len(date_str) == 8 and len(time_str) == 6:
+                        # Format: YYYYMMDD HHMMSS
+                        datetime_str = f"{date_str} {time_str}"
+                        return datetime.strptime(datetime_str, "%Y%m%d %H%M%S")
+        except Exception as e:
+            print(f"[TrajectoryProcessor] Warning: Could not extract timestamp from path {file_path}: {e}")
+        
+        return None
+    
     def _process_file(self, file_path: Path):
         """Process a single trajectory file."""
         if str(file_path) in self.processed_files:
@@ -158,12 +205,17 @@ class TrajectoryProcessor(FileSystemEventHandler):
             self.processed_files.add(str(file_path))
             print(f"[TrajectoryProcessor] File loaded, keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
             
+            # Extract timestamp from file path
+            file_timestamp = self._extract_timestamp_from_path(file_path)
+            if file_timestamp:
+                print(f"[TrajectoryProcessor] Extracted timestamp: {file_timestamp.isoformat()}")
+            
             # Extract meaningful messages/results from JSON
             extracted_messages = []
             if isinstance(data, dict):
                 extracted_messages = self._extract_messages_from_json(data)
                 
-                # Log each extracted message
+                # Log each extracted message with the file's timestamp
                 for msg in extracted_messages:
                     if msg:  # Only log non-empty messages
                         print(f"[TrajectoryProcessor] Extracted message: {msg[:100]}...")
@@ -171,7 +223,8 @@ class TrajectoryProcessor(FileSystemEventHandler):
                             task_id=self.task_id,
                             level="info",
                             message=msg,
-                            meta={"type": "agent_response", "source": "trajectory", "file": file_path.name}
+                            meta={"type": "agent_response", "source": "trajectory", "file": file_path.name},
+                            timestamp=file_timestamp  # Use extracted timestamp for accurate chronological ordering
                         )
                 
                 # Extract agent responses from output (legacy support)
@@ -194,7 +247,8 @@ class TrajectoryProcessor(FileSystemEventHandler):
                     task_id=self.task_id,
                     level="debug",
                     message=f"Trajectory processed: {file_path.name}",
-                    meta={"trajectory_file": str(file_path), "data": data}
+                    meta={"trajectory_file": str(file_path), "data": data},
+                    timestamp=file_timestamp
                 )
             else:
                 # Store a brief summary log with count of messages extracted
@@ -202,7 +256,8 @@ class TrajectoryProcessor(FileSystemEventHandler):
                     task_id=self.task_id,
                     level="debug",
                     message=f"Trajectory processed: {file_path.name} ({len(extracted_messages)} messages extracted)",
-                    meta={"trajectory_file": str(file_path), "messages_count": len(extracted_messages)}
+                    meta={"trajectory_file": str(file_path), "messages_count": len(extracted_messages)},
+                    timestamp=file_timestamp
                 )
             
         except Exception as e:
