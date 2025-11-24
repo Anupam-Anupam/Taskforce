@@ -77,7 +77,6 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
                     <span className="sidebar-preview-msg__name">
                       {msg.sender === 'agent' ? msg.agentId : msg.sender}
                     </span>
-                    <span className="sidebar-preview-msg__time">{formatTime(msg.timestamp)}</span>
                   </div>
                   <div className="sidebar-preview-msg__text">
                     {msg.text ? (msg.text.length > 100 ? msg.text.substring(0, 100) + '...' : msg.text) : '...'}

@@ -10,6 +10,9 @@ const ChatTerminal = () => {
   const [historyError, setHistoryError] = useState(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [hasNewMessages, setHasNewMessages] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const abortRef = useRef(false);
@@ -43,11 +46,28 @@ const ChatTerminal = () => {
         map.set(msg.id, { ...msg, timestamp });
       });
 
-      // Sort by timestamp and keep only the last 50 messages
-      const sortedMessages = Array.from(map.values()).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      // Sort by task ID (lowest at the bottom) and keep only the last 50 messages
+      const sortedMessages = Array.from(map.values()).sort((a, b) => {
+        // Extract task IDs, defaulting to 0 if not present
+        const taskIdA = parseInt(a.taskId) || 0;
+        const taskIdB = parseInt(b.taskId) || 0;
+        return taskIdA - taskIdB;
+      });
       return sortedMessages.slice(-50);
     });
   }, []);
+
+  const handlePasswordSubmit = (e) => {
+    e.preventDefault();
+    if (passwordInput === 'jubilee') {
+      setIsAuthenticated(true);
+      setPasswordError('');
+      setPasswordInput('');
+    } else {
+      setPasswordError('Incorrect password. Please try again.');
+      setPasswordInput('');
+    }
+  };
 
   const lastFetchTimeRef = useRef(null);
 
@@ -146,6 +166,9 @@ const ChatTerminal = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isAuthenticated) {
+      return; // Don't allow sending messages if not authenticated
+    }
     if (!inputValue.trim() || isLoading) return;
 
     const taskText = inputValue.trim();
@@ -224,6 +247,100 @@ const ChatTerminal = () => {
       setIsLoading(false);
     }
   };
+
+  // Show password screen if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="chat-terminal" style={{ 
+        height: '100%', 
+        display: 'flex', 
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'transparent',
+        position: 'relative'
+      }}>
+        <div style={{
+          backgroundColor: 'rgba(38, 38, 38, 0.95)',
+          padding: '40px',
+          borderRadius: '16px',
+          border: '1px solid rgba(124, 58, 237, 0.3)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+          maxWidth: '400px',
+          width: '90%'
+        }}>
+          <h2 style={{
+            color: '#e5e5e5',
+            marginBottom: '10px',
+            fontSize: '1.5rem',
+            textAlign: 'center'
+          }}>
+            🔒 Authentication Required
+          </h2>
+          <p style={{
+            color: '#a3a3a3',
+            marginBottom: '24px',
+            textAlign: 'center',
+            fontSize: '0.9rem'
+          }}>
+            Enter password to access chat
+          </p>
+          <form onSubmit={handlePasswordSubmit}>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="Enter password..."
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px',
+                color: '#e5e5e5',
+                fontSize: '1rem',
+                marginBottom: '16px',
+                outline: 'none',
+                transition: 'border-color 0.2s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = 'rgba(124, 58, 237, 0.5)'}
+              onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)'}
+            />
+            {passwordError && (
+              <div style={{
+                color: '#ef4444',
+                fontSize: '0.85rem',
+                marginBottom: '16px',
+                textAlign: 'center'
+              }}>
+                {passwordError}
+              </div>
+            )}
+            <button
+              type="submit"
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: 'rgba(124, 58, 237, 0.8)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#fff',
+                fontSize: '1rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(124, 58, 237, 1)'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(124, 58, 237, 0.8)'}
+            >
+              Unlock
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="chat-terminal" style={{ 
@@ -346,14 +463,6 @@ const ChatTerminal = () => {
                     }}>
                       {agentInfo.name}
                     </span>
-                    {!message.isThinking && (
-                      <span style={{ 
-                        fontSize: '0.75rem', 
-                        color: '#737373',
-                      }}>
-                        {formatTime(message.timestamp)}
-                      </span>
-                    )}
                   </div>
 
                   {/* Content */}
@@ -450,8 +559,8 @@ const ChatTerminal = () => {
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Send a message to the agents..."
-            disabled={isLoading}
+            placeholder={isAuthenticated ? "Send a message to the agents..." : "Authenticate to send messages"}
+            disabled={!isAuthenticated || isLoading}
             style={{
               width: '100%',
               padding: '16px 50px 16px 20px',
@@ -467,7 +576,7 @@ const ChatTerminal = () => {
           />
           <button
             type="submit"
-            disabled={!inputValue.trim() || isLoading}
+            disabled={!isAuthenticated || !inputValue.trim() || isLoading}
             style={{
               position: 'absolute',
               right: '12px',
