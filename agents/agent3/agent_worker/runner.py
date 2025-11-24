@@ -168,14 +168,67 @@ class AgentRunner:
                 env["WORKDIR"] = str(workdir_path)
                 print(f"[{self.config.agent_id}] Executing task {task_id} with env: TASK_ID={task_id}, WORKDIR={workdir_path}")
                 
-                result = subprocess.run(
-                    ["python", str(execute_task_script), task_description],
+                # Use Popen to stream output
+                process = subprocess.Popen(
+                    ["python", "-u", str(execute_task_script), task_description],
                     cwd=str(workdir_path),
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
-                    timeout=self.config.run_task_timeout_seconds,
-                    env=env
+                    env=env,
+                    bufsize=1,
+                    universal_newlines=True
                 )
+                
+                stdout_lines = []
+                stderr_lines = []
+                
+                # Function to consume stderr in a separate thread
+                def consume_stderr(stream, accumulator):
+                    for line in stream:
+                        accumulator.append(line)
+                
+                stderr_thread = threading.Thread(target=consume_stderr, args=(process.stderr, stderr_lines))
+                stderr_thread.daemon = True
+                stderr_thread.start()
+                
+                # Read stdout in main thread
+                while True:
+                    # Check timeout
+                    if self.config.run_task_timeout_seconds and time.time() - start_time > self.config.run_task_timeout_seconds:
+                        process.kill()
+                        # Wait for thread to finish to avoid zombie issues, though kill is drastic
+                        break 
+                    
+                    # Use readline to get line-by-line output
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
+                        break
+                        
+                    if line:
+                        stdout_lines.append(line)
+                        
+                        # Check for agent messages to stream to user
+                        if "Agent: " in line:
+                            try:
+                                msg = line.split("Agent: ", 1)[1].strip()
+                                if msg:
+                                    self.postgres.insert_progress(
+                                        task_id=task_id,
+                                        agent_id=self.config.agent_id,
+                                        percent=None,
+                                        message=msg
+                                    )
+                            except Exception as e:
+                                print(f"[{self.config.agent_id}] Warning: Failed to stream agent message: {e}")
+                
+                # Handle timeout explicitly if loop broke due to timeout
+                if self.config.run_task_timeout_seconds and time.time() - start_time > self.config.run_task_timeout_seconds:
+                     raise subprocess.TimeoutExpired(process.args, self.config.run_task_timeout_seconds)
+
+                process.wait()
+                stderr_thread.join(timeout=5)
+                
                 end_time = time.time()
                 duration = end_time - start_time
                 
@@ -184,9 +237,9 @@ class AgentRunner:
                 heartbeat_thread.join(timeout=1)
                 
                 # Get stdout and stderr
-                stdout = result.stdout or ""
-                stderr = result.stderr or ""
-                return_code = result.returncode
+                stdout = "".join(stdout_lines)
+                stderr = "".join(stderr_lines)
+                return_code = process.returncode
                 
                 # Log execution result
                 self.mongo.write_log(

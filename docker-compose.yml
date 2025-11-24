@@ -67,7 +67,6 @@ services:
       - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent1db?authSource=admin
       - AGENT_ID=agent1
       - POLL_INTERVAL_SECONDS=5
-      - RUN_TASK_TIMEOUT_SECONDS=300
     volumes:
       - ./trajectories:/tmp/agent_work:rw
     networks:
@@ -90,7 +89,6 @@ services:
       - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent2db?authSource=admin
       - AGENT_ID=agent2
       - POLL_INTERVAL_SECONDS=5
-      - RUN_TASK_TIMEOUT_SECONDS=300
     volumes:
       - ./trajectories:/tmp/agent_work:rw
     networks:
@@ -113,7 +111,6 @@ services:
       - MONGODB_URL=mongodb://admin:password@mongodb:27017/agent3db?authSource=admin
       - AGENT_ID=agent3
       - POLL_INTERVAL_SECONDS=5
-      - RUN_TASK_TIMEOUT_SECONDS=300
     volumes:
       - ./trajectories:/tmp/agent_work:rw
     networks:

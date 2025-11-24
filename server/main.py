@@ -356,26 +356,52 @@ def stop_agent(agent_id: str):
 @app.get("/chat/agent-responses")
 def get_agent_responses(limit: int = 60):
     """Get agent responses from MongoDB logs, joined with task information.
+    Also includes user messages from chat history to ensure they persist.
     Filters out system messages like 'Task picked', 'Task completed' and prioritizes meaningful agent content.
     """
     try:
         agent_ids = ["agent1", "agent2", "agent3"]
-        all_logs = []
+        all_items = []
         
-        # Fetch logs from each agent's database using cluster mode adapter
+        # 1. Fetch logs from each agent's database using cluster mode adapter
         for agent_id in agent_ids:
             try:
                 # Filter out debug logs at query level
-                # Passing dict to level argument works because pymongo accepts it in query
                 logs = agent_mongo.read_logs(
                     agent_id=agent_id,
                     level={"$ne": "debug"},
                     limit=limit * 2
                 )
-                all_logs.extend(logs)
+                for log in logs:
+                    # Add type to distinguish source
+                    log["_source_type"] = "log"
+                    all_items.append(log)
             except Exception as e:
                 print(f"Warning: Failed to read logs for {agent_id}: {e}")
         
+        # 2. Fetch user chat messages
+        try:
+            collection = server_mongo.client[server_mongo.db_name or "serverdb"]["chat_messages"]
+            chat_messages = list(collection
+                .find({"sender": "user"})
+                .sort("timestamp", -1)
+                .limit(limit))
+            
+            for msg in chat_messages:
+                # Convert chat message to similar structure as logs
+                all_items.append({
+                    "_id": str(msg["_id"]),
+                    "id": msg["message_id"],
+                    "agent_id": "user",
+                    "message": msg["message"],
+                    "timestamp": msg["timestamp"],
+                    "_source_type": "chat",
+                    "task_id": None, # Could try to extract from metadata if needed
+                    "metadata": msg.get("metadata", {})
+                })
+        except Exception as e:
+            print(f"Warning: Failed to read chat messages: {e}")
+
         # System message patterns to exclude
         system_message_patterns = [
             "task picked:",
@@ -391,8 +417,12 @@ def get_agent_responses(limit: int = 60):
             "execute_task.py completed",
         ]
         
-        def is_system_message(message_text: str, metadata: dict) -> bool:
+        def is_system_message(message_text: str, metadata: dict, source_type: str) -> bool:
             """Check if a message is a system message that should be filtered out."""
+            # Always keep chat messages
+            if source_type == "chat":
+                return False
+
             if not message_text:
                 return True
             
@@ -411,31 +441,34 @@ def get_agent_responses(limit: int = 60):
                     return True
             
             # Default: keep the message (it's likely meaningful)
-            # Removed the 10-character minimum filter to allow short responses like "Hello!"
             return False
         
         # Filter out system messages and prioritize meaningful content
-        meaningful_logs = []
-        for log in all_logs:
-            message_text = log.get("message", "")
-            metadata = log.get("metadata", {})
+        meaningful_items = []
+        for item in all_items:
+            message_text = item.get("message", "")
+            metadata = item.get("metadata", {})
+            source_type = item.get("_source_type", "log")
             
             # Skip system messages
-            if is_system_message(message_text, metadata):
+            if is_system_message(message_text, metadata, source_type):
                 continue
             
-            # Prioritize messages from trajectory or agent output (actual agent responses)
+            # Prioritize messages from trajectory, agent output, or user chat
             priority = 0
-            if metadata.get("source") in ["trajectory", "agent_output"] or metadata.get("type") == "agent_response":
+            if source_type == "chat":
+                priority = 2 # Highest priority for user messages
+            elif metadata.get("source") in ["trajectory", "agent_output"] or metadata.get("type") == "agent_response":
                 priority = 1
             
-            meaningful_logs.append((priority, log))
+            meaningful_items.append((priority, item))
         
         # Sort by timestamp chronologically (oldest first)
-        def get_sort_key(item):
-            priority, log = item
-            # MongoDB stores timestamp as 'created_at'
-            timestamp = log.get("created_at") or log.get("timestamp")
+        def get_sort_key(entry):
+            priority, item = entry
+            # MongoDB stores timestamp as 'created_at' or 'timestamp'
+            timestamp = item.get("created_at") or item.get("timestamp")
+            
             # Convert timestamp to comparable value
             if isinstance(timestamp, datetime):
                 ts_value = timestamp.timestamp()
@@ -448,17 +481,19 @@ def get_agent_responses(limit: int = 60):
                 ts_value = 0
             return ts_value
         
-        meaningful_logs.sort(key=get_sort_key, reverse=False)  # Oldest first for chronological order
+        meaningful_items.sort(key=get_sort_key, reverse=False)  # Oldest first for chronological order
         
-        # Get the top meaningful logs
-        filtered_logs = [log for _, log in meaningful_logs[:limit * 2]]  # Get 2x limit after filtering
+        # Get the top meaningful items (keep last N to respect limit)
+        # We want the most recent 'limit' items, but sorted chronologically
+        # So we take the last 'limit' items from the sorted list
+        filtered_items = [item for _, item in meaningful_items[-limit:]]
         
-        # Get task IDs from filtered logs
+        # Get task IDs from filtered logs (for agents)
         task_ids = set()
-        for log in filtered_logs:
-            if log.get("task_id"):
+        for item in filtered_items:
+            if item.get("task_id"):
                 try:
-                    task_ids.add(int(log["task_id"]))
+                    task_ids.add(int(item["task_id"]))
                 except (ValueError, TypeError):
                     pass
         
@@ -491,13 +526,13 @@ def get_agent_responses(limit: int = 60):
         
         # Format response
         messages = []
-        for log in filtered_logs[:limit]:
+        for item in filtered_items:
             try:
-                log_id = str(log.get("_id", ""))
-                agent_id = log.get("agent_id", "agent")
-                message_text = log.get("message", "")
+                item_id = str(item.get("id") or item.get("_id", ""))
+                agent_id = item.get("agent_id", "agent")
+                message_text = item.get("message", "")
                 # MongoDB stores timestamp as 'created_at', use that as primary source
-                timestamp = log.get("created_at") or log.get("timestamp")
+                timestamp = item.get("created_at") or item.get("timestamp")
                 task_id = None
                 
                 # Skip empty messages
@@ -505,9 +540,9 @@ def get_agent_responses(limit: int = 60):
                     continue
                 
                 # Extract task_id
-                if log.get("task_id"):
+                if item.get("task_id"):
                     try:
-                        task_id = int(log["task_id"])
+                        task_id = int(item["task_id"])
                     except (ValueError, TypeError):
                         pass
                 
@@ -521,9 +556,8 @@ def get_agent_responses(limit: int = 60):
                 if task_id and task_id in progress_map:
                     progress_percent = progress_map[task_id]
                 
-                # Format timestamp - ensure proper conversion from MongoDB datetime
+                # Format timestamp - ensure proper conversion
                 if isinstance(timestamp, datetime):
-                    # Already a datetime object from MongoDB
                     pass
                 elif isinstance(timestamp, str):
                     try:
@@ -538,7 +572,7 @@ def get_agent_responses(limit: int = 60):
                     timestamp = datetime.now(timezone.utc)
                 
                 messages.append({
-                    "id": log_id,
+                    "id": item_id,
                     "agent_id": agent_id,
                     "message": message_text,
                     "timestamp": timestamp.isoformat() if isinstance(timestamp, datetime) else str(timestamp),
@@ -554,7 +588,7 @@ def get_agent_responses(limit: int = 60):
         messages.sort(key=lambda x: x.get("timestamp", ""), reverse=False)
         
         return {
-            "messages": messages[:limit],
+            "messages": messages,
             "count": len(messages)
         }
     except Exception as e:
