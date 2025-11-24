@@ -101,8 +101,9 @@ class DataCollector:
 
     def collect_all(self) -> List[Dict[str, Any]]:
         """
-        Collect data for the most recent task, evaluated for each agent individually.
-        The evaluator evaluates how each agent (agent1, agent2, agent3) performed on the same task.
+        Collect data for the most recent task group (3 tasks - one per agent).
+        Now that each agent executes the same task independently, we evaluate each agent's
+        actual performance on their assigned task.
         """
         # Get recent tasks from PostgreSQL
         tasks = self.pg.get_tasks(limit=100)
@@ -110,31 +111,56 @@ class DataCollector:
             self.logger.warning(json.dumps({"event": "no_tasks_found"}))
             return []
         
-        # Find the task with the greatest ID (most recent)
-        most_recent_task = max(
-            tasks,
-            key=lambda t: int(t.get("id") or 0)
-        )
+        # Group tasks by their description/title (tasks created together have same description)
+        # and find the most recent group
+        from collections import defaultdict
+        task_groups = defaultdict(list)
         
-        task_id = self._normalize_id(most_recent_task.get("id"))
+        for task in tasks:
+            # Group by description as tasks created together have identical descriptions
+            description = task.get("description", "")
+            task_groups[description].append(task)
         
-        if not task_id:
-            self.logger.error(json.dumps({"event": "invalid_task_id", "task": most_recent_task}))
+        # Find the group with the highest task ID (most recent group)
+        most_recent_group = []
+        max_task_id = 0
+        
+        for description, group in task_groups.items():
+            # Get the highest ID in this group
+            group_max_id = max(int(t.get("id") or 0) for t in group)
+            if group_max_id > max_task_id:
+                max_task_id = group_max_id
+                most_recent_group = group
+        
+        if not most_recent_group:
+            self.logger.error(json.dumps({"event": "no_valid_task_group_found"}))
             return []
         
-        # Evaluate the most recent task for each agent separately
-        agent_ids = ["agent1", "agent2", "agent3"]
+        self.logger.info(json.dumps({
+            "event": "evaluating_task_group",
+            "task_count": len(most_recent_group),
+            "task_ids": [t.get("id") for t in most_recent_group],
+            "agents": [t.get("agent_id") for t in most_recent_group]
+        }))
+        
+        # Evaluate each agent's task from the most recent group
         results: List[Dict[str, Any]] = []
         
-        for agent_id in agent_ids:
+        for task in most_recent_group:
+            agent_id = self._normalize_id(task.get("agent_id"))
+            task_id = self._normalize_id(task.get("id"))
+            
+            if not agent_id or not task_id:
+                continue
+            
             try:
                 data = self.collect_for_task(agent_id, task_id)
                 results.append(data)
                 self.logger.info(json.dumps({
-                    "event": "collecting_most_recent_task_for_agent",
+                    "event": "collecting_agent_task",
                     "task_id": task_id,
                     "agent_id": agent_id,
-                    "status": most_recent_task.get("status")
+                    "status": task.get("status")
                 }))
             except Exception as e:
                 self.logger.error(json.dumps({

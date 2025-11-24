@@ -87,27 +87,33 @@ def health():
 # Task endpoints
 @app.post("/task", response_model=TaskResponse)
 def create_task(task: TaskRequest):
-    """Create a new task and add it to the queue."""
+    """Create a new task and add it to the queue for all agents to compete."""
     try:
-        # Create task in PostgreSQL
-        task_id = pg.create_task(
-            agent_id="system",
-            title=task.text[:100],  # Truncate for title
-            description=task.text,
-            status="pending"
-        )
+        # Create 3 separate tasks - one for each agent to compete
+        agent_ids = ["agent1", "agent2", "agent3"]
+        task_ids = []
         
-        # Log task creation
-        server_mongo.write_log(
-            level="info",
-            message=f"Task created: {task.text[:50]}...",
-            task_id=str(task_id)
-        )
+        for agent_id in agent_ids:
+            task_id = pg.create_task(
+                agent_id=agent_id,
+                title=task.text[:100],  # Truncate for title
+                description=task.text,
+                status="pending"
+            )
+            task_ids.append(task_id)
+            
+            # Log task creation per agent
+            server_mongo.write_log(
+                level="info",
+                message=f"Task created for {agent_id}: {task.text[:50]}...",
+                task_id=str(task_id)
+            )
         
+        # Return the first task ID as the "primary" task
         return TaskResponse(
-            task_id=task_id,
+            task_id=task_ids[0],
             status="pending",
-            message="Task created successfully"
+            message=f"Task created for all 3 agents (IDs: {', '.join(map(str, task_ids))})"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
@@ -165,24 +171,31 @@ def send_chat_message(message: ChatMessageRequest):
         task_id = None
         agents_notified = None
         
-        # If sender is "user", create a task and notify agents
+        # If sender is "user", create 3 tasks - one for each agent to compete
         if message.sender == "user":
-            task_id = pg.create_task(
-                agent_id="system",
-                title=message.message[:100],
-                description=message.message,
-                status="pending",
-                metadata={"chat_message_id": message_id}
-            )
+            agent_ids = ["agent1", "agent2", "agent3"]
+            task_ids = []
             
-            # Notify all agents (they poll PostgreSQL for tasks)
+            for agent_id in agent_ids:
+                agent_task_id = pg.create_task(
+                    agent_id=agent_id,
+                    title=message.message[:100],
+                    description=message.message,
+                    status="pending",
+                    metadata={"chat_message_id": message_id}
+                )
+                task_ids.append(agent_task_id)
+                
+                server_mongo.write_log(
+                    level="info",
+                    message=f"User message created task {agent_task_id} for {agent_id}",
+                    task_id=str(agent_task_id)
+                )
+            
+            # Use the first task ID as the primary task ID for the chat message
+            task_id = task_ids[0]
+            # All agents are notified (they each have their own task)
             agents_notified = 3  # agent1, agent2, agent3
-            
-            server_mongo.write_log(
-                level="info",
-                message=f"User message created task {task_id}",
-                task_id=str(task_id)
-            )
         
         return ChatMessageResponse(
             message_id=message_id,
