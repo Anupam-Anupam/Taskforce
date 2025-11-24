@@ -20,11 +20,9 @@ function App() {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
         
         <main className="app-content">
-          {activeTab === 'chat' && (
-            <section className="chat-view">
-              <ChatTerminal />
-            </section>
-          )}
+          <section className="chat-view" style={{ display: activeTab === 'chat' ? 'flex' : 'none' }}>
+            <ChatTerminal />
+          </section>
           
           {activeTab === 'agents' && (
             <section>

@@ -21,7 +21,7 @@ class Config:
     
     # Worker settings
     poll_interval_seconds: int
-    run_task_timeout_seconds: int
+    run_task_timeout_seconds: Optional[int]
     
     @classmethod
     def from_env(cls) -> "Config":
@@ -43,7 +43,9 @@ class Config:
         
         # Worker settings with defaults
         poll_interval_seconds = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
-        run_task_timeout_seconds = int(os.getenv("RUN_TASK_TIMEOUT_SECONDS", "300"))
+        
+        timeout_val = os.getenv("RUN_TASK_TIMEOUT_SECONDS")
+        run_task_timeout_seconds = int(timeout_val) if timeout_val else None
         
         return cls(
             postgres_dsn=postgres_dsn,

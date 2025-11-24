@@ -15,7 +15,7 @@ const ChatTerminal = () => {
   const abortRef = useRef(false);
   const prevMessageCountRef = useRef(0);
 
-  const upsertMessages = useCallback((incoming = []) => {
+  const upsertMessages = useCallback((incoming = [], { restampNew = false } = {}) => {
     if (!incoming.length) {
       return;
     }
@@ -26,7 +26,20 @@ const ChatTerminal = () => {
         if (!msg || msg.id === undefined || msg.id === null) {
           return;
         }
-        const timestamp = ensureDate(msg.timestamp);
+        
+        let timestamp = ensureDate(msg.timestamp);
+        
+        // If restampNew is true, we want to use the current time for NEW messages
+        // For existing messages, we prefer to keep the timestamp we already have
+        if (restampNew) {
+          const existing = map.get(msg.id);
+          if (existing) {
+            timestamp = existing.timestamp;
+          } else {
+            timestamp = new Date();
+          }
+        }
+
         map.set(msg.id, { ...msg, timestamp });
       });
 
@@ -69,7 +82,7 @@ const ChatTerminal = () => {
         .filter(Boolean);
 
       if (normalized.length) {
-        upsertMessages(normalized);
+        upsertMessages(normalized, { restampNew: !isInitial });
         // Update last fetch time to the most recent message timestamp
         const latestTimestamp = normalized[0]?.timestamp;
         if (latestTimestamp) {
@@ -161,10 +174,16 @@ const ChatTerminal = () => {
     upsertMessages([thinkingMessage]);
 
     try {
-      const response = await fetch(`${API_BASE}/task`, {
+      // Use the chat API which automatically creates tasks for user messages
+      // and persists the message in chat history
+      const response = await fetch(`${API_BASE}/chat/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: taskText, timestamp: taskTimestamp.toISOString() }),
+        body: JSON.stringify({ 
+          sender: 'user',
+          message: taskText,
+          metadata: {} 
+        }),
       });
 
       // Check content-type before parsing JSON
@@ -175,13 +194,20 @@ const ChatTerminal = () => {
 
       const data = await response.json();
 
-      setMessages((prev) => prev.filter((msg) => !msg.isThinking));
+      setMessages((prev) => {
+        // Remove thinking message
+        const filtered = prev.filter((msg) => !msg.isThinking);
+        // Update the optimistic message with the real ID from server if found
+        return filtered.map(msg => {
+          if (msg.id === userMessage.id) {
+            return { ...msg, id: data.message_id || msg.id };
+          }
+          return msg;
+        });
+      });
 
-      if (response.ok) {
-        // Don't add task creation message - only show final agent responses
-        // The agent response will appear automatically when it completes
-      } else {
-        throw new Error(data.detail || 'Failed to create task');
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to send message');
       }
     } catch (error) {
       setMessages((prev) => prev.filter((msg) => !msg.isThinking));
