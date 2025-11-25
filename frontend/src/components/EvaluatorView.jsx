@@ -1,17 +1,6 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '../config';
 
-// Reusable Summary Card Component
-const SummaryCard = ({ title, value, trend, icon }) => (
-  <div className="summary-card">
-    <div className="summary-card__icon">{icon}</div>
-    <div className="summary-card__content">
-      <span className="summary-card__title">{title}</span>
-      <span className="summary-card__value">{value}</span>
-    </div>
-    {trend && <span className="summary-card__trend">{trend}</span>}
-  </div>
-);
 
 const ScoreBreakdown = ({ scores, metrics, penalties, summary, isCompact = false }) => {
   const metricsList = [
@@ -203,30 +192,6 @@ const EvaluatorView = () => {
         </div>
       </div>
 
-      <div className="summary-grid">
-        <SummaryCard 
-          title="Total Evaluations" 
-          value={stats.totalEvaluations} 
-          icon="📊"
-        />
-        <SummaryCard 
-          title="Agents Monitored" 
-          value={stats.agentsEvaluated} 
-          icon="🤖"
-        />
-        <SummaryCard 
-          title="Tasks Processed" 
-          value={stats.tasksEvaluated} 
-          icon="📝"
-        />
-        <SummaryCard 
-          title="Avg. Success Rate" 
-          value={`${stats.averageScore.toFixed(1)}%`} 
-          icon="🎯"
-          trend={stats.averageScore > 80 ? "High" : "Normal"}
-        />
-      </div>
-
       <div className="dashboard-grid">
         <div className="dashboard-main">
             <div className="evaluator-card">
@@ -254,23 +219,23 @@ const EvaluatorView = () => {
                 </div>
             </div>
 
-            <div className="evaluator-card">
-                <div className="card-header">
-                    <h3>Recent Evaluations</h3>
-                </div>
-                <div className="card-body no-padding">
-                    {recentEvaluations.length === 0 ? (
-                    <div className="placeholder-state">
-                        No evaluations recorded yet.
-                    </div>
-                    ) : (
-                    <div className="evaluations-list">
-                        {recentEvaluations.map((evaluation, idx) => (
-                        <EvaluationItem key={idx} evaluation={evaluation} />
-                        ))}
-                    </div>
-                    )}
-                </div>
+            <div className="stats-banner">
+              <div className="stats-banner__item">
+                <span className="stats-banner__label">Total Evaluations</span>
+                <span className="stats-banner__value">{stats.totalEvaluations}</span>
+              </div>
+              <div className="stats-banner__item">
+                <span className="stats-banner__label">Agents Monitored</span>
+                <span className="stats-banner__value">{stats.agentsEvaluated}</span>
+              </div>
+              <div className="stats-banner__item">
+                <span className="stats-banner__label">Tasks Processed</span>
+                <span className="stats-banner__value">{stats.tasksEvaluated}</span>
+              </div>
+              <div className="stats-banner__item">
+                <span className="stats-banner__label">Avg. Success Rate</span>
+                <span className="stats-banner__value">{stats.averageScore.toFixed(1)}%</span>
+              </div>
             </div>
         </div>
 
@@ -323,6 +288,25 @@ const EvaluatorView = () => {
                             </div>
                         );
                     })}
+                </div>
+            </div>
+
+            <div className="evaluator-card evaluator-card--compact">
+                <div className="card-header card-header--compact">
+                    <h3>Recent Evaluations</h3>
+                </div>
+                <div className="card-body no-padding">
+                    {recentEvaluations.length === 0 ? (
+                    <div className="placeholder-state placeholder-state--compact">
+                        No evaluations yet.
+                    </div>
+                    ) : (
+                    <div className="evaluations-list evaluations-list--compact">
+                        {recentEvaluations.slice(0, 3).map((evaluation, idx) => (
+                        <EvaluationItem key={idx} evaluation={evaluation} />
+                        ))}
+                    </div>
+                    )}
                 </div>
             </div>
         </div>

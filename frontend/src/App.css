@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&display=swap');
 
 :root {
   /* Dark Theme - Premium Dark & Purple */
@@ -36,7 +36,7 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--text-color);
   line-height: 1.55;
   background-color: var(--bg-color);
@@ -675,6 +675,35 @@ body {
   gap: 24px;
 }
 
+.stats-banner {
+  display: flex;
+  gap: 32px;
+  padding: 20px 24px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-medium);
+  justify-content: space-around;
+}
+
+.stats-banner__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+
+.stats-banner__label {
+  font-size: 0.85rem;
+  color: var(--muted-text);
+  font-weight: 500;
+}
+
+.stats-banner__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
 /* Evaluator Cards */
 .evaluator-card {
   background: var(--bg-elevated);
@@ -697,6 +726,14 @@ body {
   color: var(--text-color);
 }
 
+.card-header--compact {
+  padding: 12px 16px;
+}
+
+.card-header--compact h3 {
+  font-size: 0.9rem;
+}
+
 .card-body {
   padding: 24px;
 }
@@ -710,6 +747,11 @@ body {
   text-align: center;
   padding: 40px 20px;
   font-style: italic;
+}
+
+.placeholder-state--compact {
+  padding: 20px 16px;
+  font-size: 0.85rem;
 }
 
 /* Graph */
@@ -788,6 +830,11 @@ body {
   flex-direction: column;
 }
 
+.evaluations-list--compact {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
 .evaluation-wrapper {
   border-bottom: 1px solid var(--border-soft);
 }
@@ -805,6 +852,10 @@ body {
   transition: background 0.2s;
 }
 
+.evaluator-card--compact .evaluation-item {
+  padding: 10px 16px;
+}
+
 .evaluation-item:hover {
   background: rgba(255, 255, 255, 0.02);
 }
@@ -820,15 +871,27 @@ body {
   color: var(--text-color);
 }
 
+.evaluator-card--compact .evaluation-id {
+  font-size: 0.85rem;
+}
+
 .evaluation-agent {
   font-size: 0.85rem;
   color: var(--accent);
   font-weight: 500;
 }
 
+.evaluator-card--compact .evaluation-agent {
+  font-size: 0.75rem;
+}
+
 .evaluation-date {
   font-size: 0.8rem;
   color: var(--muted-text);
+}
+
+.evaluator-card--compact .evaluation-date {
+  font-size: 0.7rem;
 }
 
 .evaluation-item__score {
@@ -846,6 +909,11 @@ body {
   border: 1px solid transparent;
 }
 
+.evaluator-card--compact .score-badge {
+  font-size: 0.9rem;
+  padding: 3px 8px;
+}
+
 .chevron {
   color: var(--muted-text);
   font-size: 0.8rem;
@@ -860,6 +928,10 @@ body {
   padding: 0 24px 24px 24px;
   background: rgba(0, 0, 0, 0.2);
   border-top: 1px solid var(--border-soft);
+}
+
+.evaluator-card--compact .evaluation-details {
+  padding: 0 16px 16px 16px;
 }
 
 .details-header {
