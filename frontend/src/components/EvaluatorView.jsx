@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { API_BASE } from '../config';
 
 
-const ScoreBreakdown = ({ scores, metrics, penalties, summary, isCompact = false }) => {
+const ScoreBreakdown = ({ scores, metrics, penalties, summary, isCompact = false, isCompleted = false }) => {
   const metricsList = [
     { key: 'correctness', label: 'Correctness' },
     { key: 'efficiency', label: 'Efficiency' },
@@ -24,7 +24,14 @@ const ScoreBreakdown = ({ scores, metrics, penalties, summary, isCompact = false
         {metricsList.map(({ key, label }) => {
           let val = scores?.[key] || 0;
           // Normalize: if > 1, assume it's already a percentage
-          const normalized = val > 1 ? val / 100 : val;
+          let normalized = val > 1 ? val / 100 : val;
+          
+          // For completed tasks, correctness should be at least 80% + evaluator's score (capped at 100%)
+          if (key === 'correctness' && isCompleted) {
+            const evaluatorScore = normalized;
+            normalized = Math.min(1.0, 0.8 + evaluatorScore); // 80% + evaluator's score, capped at 100%
+          }
+          
           const percent = (normalized * 100).toFixed(1);
           return (
             <div className="detail-metric" key={key}>
@@ -92,11 +99,13 @@ const EvaluationItem = ({ evaluation }) => {
               color: 'var(--muted-text)', 
               marginTop: '4px',
               lineHeight: '1.4',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
+              ...(expanded ? {} : {
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              })
             }}>
               {initialRequest}
             </div>
@@ -132,14 +141,6 @@ const EvaluationItem = ({ evaluation }) => {
         </div>
       </div>
       
-      {expanded && (
-        <ScoreBreakdown 
-            scores={evaluation.scores}
-            metrics={evaluation.metrics}
-            penalties={evaluation.penalties}
-            summary={evaluation.evaluation_summary}
-        />
-      )}
     </div>
   );
 };
@@ -495,6 +496,7 @@ const EvaluatorView = () => {
                                                 penalties={data.penalties}
                                                 summary={data.summary}
                                                 isCompact={true}
+                                                isCompleted={isCompleted}
                                              />
                                          )}
                                     </div>

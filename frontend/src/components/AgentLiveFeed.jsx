@@ -116,7 +116,7 @@ const AgentLiveFeed = () => {
 
             {/* Agent Name Overlay */}
             <div className="agent-card__name-overlay">
-              {agentId || 'Unknown Agent'}
+              {agentId === 'agent1' ? 'GPT 4' : agentId === 'agent2' ? 'GPT 5' : agentId === 'agent3' ? 'GPT 4.1' : (agentId || 'Unknown Agent')}
             </div>
           </div>
         </article>

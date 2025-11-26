@@ -558,9 +558,9 @@ const ChatTerminal = () => {
             // Updated color mapping for dark purple theme
             // Using darker backgrounds with purple accents
             const agentColors = {
-              'agent1': { bg: 'rgba(6, 78, 59, 0.4)', text: '#34d399', name: 'Agent 1', emoji: '🤖', border: '#065f46' },
-              'agent2': { bg: 'rgba(30, 64, 175, 0.4)', text: '#60a5fa', name: 'Agent 2', emoji: '🦾', border: '#1e40af' },
-              'agent3': { bg: 'rgba(124, 58, 237, 0.3)', text: '#a78bfa', name: 'Agent 3', emoji: '🧠', border: '#6d28d9' },
+              'agent1': { bg: 'rgba(6, 78, 59, 0.4)', text: '#34d399', name: 'GPT 4', emoji: '🤖', border: '#065f46' },
+              'agent2': { bg: 'rgba(30, 64, 175, 0.4)', text: '#60a5fa', name: 'GPT 5', emoji: '🦾', border: '#1e40af' },
+              'agent3': { bg: 'rgba(124, 58, 237, 0.3)', text: '#a78bfa', name: 'GPT 4.1', emoji: '🧠', border: '#6d28d9' },
               'system': { bg: 'rgba(38, 38, 38, 0.6)', text: '#a3a3a3', name: 'System', emoji: '⚙️', border: '#404040' },
               'user': { bg: 'rgba(38, 38, 38, 0.6)', text: '#a3a3a3', name: 'You', emoji: '👤', border: '#404040' }
             };
@@ -900,7 +900,9 @@ const ChatTerminal = () => {
                       {agentId.replace('agent', 'A')}
                     </div>
                     <div style={{ textAlign: 'left' }}>
-                      <div style={{ fontWeight: 600, color: '#f3f4f6' }}>{agentId}</div>
+                      <div style={{ fontWeight: 600, color: '#f3f4f6' }}>
+                        {agentId === 'agent1' ? 'GPT 4' : agentId === 'agent2' ? 'GPT 5' : agentId === 'agent3' ? 'GPT 4.1' : agentId}
+                      </div>
                       <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
                         {isOnline ? 'Ready for tasks' : 'Agent unreachable'}
                       </div>

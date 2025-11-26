@@ -199,9 +199,15 @@ class LLMInterface:
             f"dependency_requests={m.get('human_or_agent_requests', 0)}, api_calls={m.get('total_api_calls', 0)}."
         )
 
-    def generate_structured_feedback(self, agent_id: str, reports: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def generate_structured_feedback(self, agent_id: str, reports: List[Dict[str, Any]], task_data_list: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
-        Generate structured feedback for an agent based on their evaluation reports.
+        Generate structured feedback for an agent by directly asking the LLM what the agent succeeded in,
+        what it struggled with, and recommendations for improvement.
+        
+        Args:
+            agent_id: The agent identifier
+            reports: List of evaluation reports (for score calculation)
+            task_data_list: Optional list of full task data (logs, initial_request, final_output) for LLM analysis
         
         Returns:
             Dict with keys: strengths, weaknesses, recommendations, overall_assessment
@@ -248,41 +254,86 @@ class LLMInterface:
         if not self.api_key:
             return self._fallback_feedback(agent_id, avg_score, total_errors, avg_time, total_cost)
         
+        # Build context from task data if available, otherwise use reports
+        task_context = ""
+        if task_data_list and len(task_data_list) > 0:
+            # Use actual task data (logs, requests, outputs) for analysis
+            context_parts = []
+            for idx, task_data in enumerate(task_data_list[:5]):  # Limit to 5 most recent tasks
+                initial_request = task_data.get("initial_request", "")
+                final_output = task_data.get("final_output", "")
+                logs = task_data.get("logs", [])
+                
+                # Sample recent logs (last 20)
+                log_sample = "\n".join([
+                    f"[{l.get('level', 'INFO')}] {str(l.get('message', ''))[:150]}"
+                    for l in logs[-20:]
+                ])
+                
+                context_parts.append(
+                    f"Task {idx + 1}:\n"
+                    f"Initial Request: {initial_request[:500]}\n"
+                    f"Final Output: {final_output[:500]}\n"
+                    f"Recent Logs:\n{log_sample[:1000]}\n"
+                )
+            task_context = "\n\n".join(context_parts)
+        elif recent_summaries:
+            # Fallback: use evaluation summaries from reports
+            task_context = "Recent Evaluation Summaries:\n" + "\n".join([f"- {s}" for s in recent_summaries if s])
+        
+        # If no context available, provide basic metrics as context
+        if not task_context:
+            task_context = (
+                f"Performance Metrics:\n"
+                f"- Average Score: {avg_score:.1f}%\n"
+                f"- Total Tasks: {total_tasks}\n"
+                f"- Total Errors: {total_errors}\n"
+                f"- Average Time: {avg_time:.1f}s\n"
+                f"- Total Cost: ${total_cost:.4f}\n"
+            )
+            self.logger.warning(f"Limited context available for {agent_id}, using basic metrics")
+        
         prompt = (
-            f"You are evaluating agent performance. Generate structured feedback for {agent_id}.\n\n"
-            f"Performance Metrics:\n"
-            f"- Average Score: {avg_score:.1f}%\n"
-            f"- Total Tasks Evaluated: {total_tasks}\n"
-            f"- Total Errors: {total_errors}\n"
-            f"- Average Completion Time: {avg_time:.1f}s\n"
-            f"- Total Cost: ${total_cost:.4f}\n\n"
-            f"Recent Evaluation Summaries:\n" + "\n".join([f"- {s}" for s in recent_summaries if s]) + "\n\n"
-            f"Provide structured feedback in JSON format with these exact keys:\n"
-            f'{{"strengths": ["strength1", "strength2"], "weaknesses": ["weakness1", "weakness2"], '
-            f'"recommendations": ["recommendation1", "recommendation2"], '
-            f'"overall_assessment": "one sentence summary starting with agent name, e.g. \\"{agent_id} has a moderate performance score of {avg_score:.1f}%\\""}}\n\n'
-            f"IMPORTANT for recommendations:\n"
-            f"- Focus on how to fine-tune system prompts (e.g., 'Adjust system prompt to emphasize X', 'Clarify instructions in system prompt for Y')\n"
-            f"- Focus on how to fine-tune the model itself (e.g., 'Consider fine-tuning model parameters for Z', 'Adjust temperature/sampling settings')\n"
-            f"- Be specific about prompt engineering and model configuration improvements\n\n"
-            f"Be specific and actionable. Return ONLY valid JSON, no other text."
+            f"You are analyzing the performance of {agent_id}, an autonomous AI agent.\n\n"
+            f"Based on the following task execution data, please provide direct feedback:\n\n"
+            f"{task_context}\n\n"
+            f"Please analyze this agent's performance and answer these questions directly:\n\n"
+            f"1. What did this agent SUCCEED in? What did it do well?\n"
+            f"2. What did this agent STRUGGLE with? Where did it face challenges or fail?\n"
+            f"3. What are your RECOMMENDATIONS for improving this agent? Focus specifically on:\n"
+            f"   - How to fine-tune or adjust the system prompts (e.g., 'Modify system prompt to emphasize X', 'Add clarification in system prompt about Y')\n"
+            f"   - How to fine-tune the model itself (e.g., 'Adjust model temperature/sampling parameters', 'Consider fine-tuning on specific task types')\n"
+            f"   - Be specific and actionable about prompt engineering and model configuration\n\n"
+            f"Provide your response in JSON format with these exact keys:\n"
+            f'{{"strengths": ["what the agent succeeded in 1", "what the agent succeeded in 2"], '
+            f'"weaknesses": ["what the agent struggled with 1", "what the agent struggled with 2"], '
+            f'"recommendations": ["specific recommendation 1", "specific recommendation 2"], '
+            f'"overall_assessment": "one sentence summary starting with the agent name, e.g. \\"{agent_id} has a moderate performance score of {avg_score:.1f}%\\""}}\n\n'
+            f"Be direct, specific, and actionable. Base your analysis on the actual task execution data provided. "
+            f"Return ONLY valid JSON, no other text."
         )
         
         try:
+            self.logger.info(f"Calling LLM for structured feedback for {agent_id} with API base: {self.api_base}")
+            # Build request payload
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "You are a performance evaluator. Respond with only valid JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 800,
+            }
+            # Only add response_format if the model supports it (OpenAI GPT-4+)
+            if "gpt-4" in self.model.lower() or "gpt-3.5" in self.model.lower():
+                payload["response_format"] = {"type": "json_object"}
+            
             resp = requests.post(
                 f"{self.api_base}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": "You are a performance evaluator. Respond with only valid JSON."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 500,
-                    "response_format": {"type": "json_object"}
-                },
-                timeout=30,
+                json=payload,
+                timeout=60,
             )
             if resp.ok:
                 data = resp.json()
@@ -291,6 +342,7 @@ class LLMInterface:
                 try:
                     feedback = json.loads(content)
                     # Ensure all required keys exist
+                    self.logger.info(f"Successfully generated LLM feedback for {agent_id}")
                     return {
                         "score": round(avg_score, 1),
                         "assessment": assessment_word,
@@ -299,11 +351,15 @@ class LLMInterface:
                         "recommendations": feedback.get("recommendations", []),
                         "overall_assessment": feedback.get("overall_assessment", "No assessment available.")
                     }
-                except json.JSONDecodeError:
-                    self.logger.warning(f"Failed to parse feedback JSON: {content[:100]}")
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"Failed to parse feedback JSON for {agent_id}: {e}. Content: {content[:200]}")
+            else:
+                self.logger.error(f"LLM API call failed for {agent_id}: {resp.status_code} - {resp.text[:200]}")
         except Exception as e:
-            self.logger.warning(f"Failed to generate structured feedback: {e}")
+            self.logger.error(f"Failed to generate structured feedback for {agent_id}: {e}", exc_info=True)
         
+        # Only use fallback if LLM call actually failed
+        self.logger.warning(f"Using fallback feedback for {agent_id} due to LLM failure")
         return self._fallback_feedback(agent_id, avg_score, total_errors, avg_time, total_cost)
     
     def _fallback_feedback(self, agent_id: str, avg_score: float, total_errors: int, avg_time: float, total_cost: float) -> Dict[str, Any]:

@@ -136,8 +136,97 @@ def create_app() -> FastAPI:
             for agent_id in agents:
                 agent_reports = scheduler.get_agent_reports(agent_id)
                 if agent_reports:
-                    feedback = llm.generate_structured_feedback(agent_id, agent_reports)
+                    # Collect actual task data (logs, requests, outputs) for LLM analysis
+                    task_data_list = []
+                    for report in agent_reports[:5]:  # Get data for up to 5 most recent tasks
+                        task_id = report.get("task_id")
+                        if task_id:
+                            try:
+                                task_data = collector.collect_for_task(agent_id, task_id)
+                                task_data_list.append(task_data)
+                            except Exception as e:
+                                logger.warning(json.dumps({
+                                    "event": "collect_task_data_for_feedback_error",
+                                    "agent_id": agent_id,
+                                    "task_id": task_id,
+                                    "error": str(e)
+                                }))
+                    
+                    feedback = llm.generate_structured_feedback(agent_id, agent_reports, task_data_list)
                     agent_feedback[agent_id] = feedback
+            
+            # Calculate recent evaluations with real scores from MongoDB logs
+            recent_evaluations = []
+            try:
+                # Get recent tasks from PostgreSQL (most recent first)
+                recent_tasks = pg.get_tasks(limit=20)
+                if recent_tasks:
+                    # Sort by task ID descending to get most recent
+                    recent_tasks.sort(key=lambda t: int(t.get("id", 0) or 0), reverse=True)
+                    
+                    # Process up to 5 most recent tasks
+                    processed_count = 0
+                    for task in recent_tasks[:5]:
+                        if processed_count >= 5:
+                            break
+                        
+                        task_id = str(task.get("id", ""))
+                        agent_id = task.get("agent_id")
+                        
+                        if not task_id or not agent_id:
+                            continue
+                        
+                        try:
+                            # Collect task data from MongoDB logs
+                            task_data = collector.collect_for_task(agent_id, task_id)
+                            
+                            # Calculate score using the same scoring engine as agent feedback
+                            score_pack = scorer.score_task(task_data)
+                            
+                            # Generate summary
+                            summary = llm.summarize({**task_data, **score_pack})
+                            
+                            # Build evaluation report
+                            evaluation = builder.build_report(task_data, score_pack, summary)
+                            
+                            # Add initial_request for frontend display
+                            evaluation["initial_request"] = task_data.get("initial_request", "")
+                            
+                            # Check if task is completed
+                            is_completed = False
+                            try:
+                                task_id_int = int(task_id)
+                                task_info = pg.get_task(task_id_int)
+                                if task_info and str(task_info.get("status", "")).lower() == "completed":
+                                    is_completed = True
+                                    # Override final score to 100% if completed
+                                    if evaluation.get("scores"):
+                                        evaluation["scores"]["final_score"] = 1.0
+                                        evaluation["scores"]["output_score"] = 100.0
+                            except Exception:
+                                pass
+                            
+                            recent_evaluations.append(evaluation)
+                            processed_count += 1
+                            
+                        except Exception as e:
+                            logger.warning(json.dumps({
+                                "event": "recent_evaluation_error",
+                                "task_id": task_id,
+                                "agent_id": agent_id,
+                                "error": str(e)
+                            }))
+                            continue
+                    
+                    # Sort by task_id descending (most recent first)
+                    recent_evaluations.sort(key=lambda e: int(e.get("task_id", 0) or 0), reverse=True)
+            except Exception as e:
+                logger.error(json.dumps({
+                    "event": "recent_evaluations_error",
+                    "error": str(e)
+                }))
+                # Fallback to cached reports if calculation fails
+                recent_evaluations = all_reports[:5] if all_reports else []
             
             return {
                 "status": "running",
@@ -148,7 +237,7 @@ def create_app() -> FastAPI:
                 "average_score": round(avg_score, 2),
                 "agent_scores": agent_scores,
                 "agent_feedback": agent_feedback,
-                "recent_evaluations": all_reports[:5] if all_reports else []
+                "recent_evaluations": recent_evaluations[:5]  # Limit to top 5
             }
         except Exception as e:
             logger.error(json.dumps({
