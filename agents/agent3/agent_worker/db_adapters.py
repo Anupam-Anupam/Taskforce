@@ -5,7 +5,7 @@ import psycopg2
 import psycopg2.pool
 from psycopg2.extras import RealDictCursor
 from pymongo import MongoClient
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import traceback
 import json
@@ -69,6 +69,41 @@ class PostgresClient:
             pass
         self._connect()
     
+    def get_task_by_id(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """Get a specific task by ID."""
+        self._ensure_connection()
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, agent_id, title, description, status, 
+                           metadata, created_at, updated_at
+                    FROM tasks
+                    WHERE id = %s
+                """, (task_id,))
+                row = cur.fetchone()
+                if row:
+                    return dict(row)
+                return None
+        except Exception as e:
+            print(f"Warning: Failed to get task {task_id}: {e}")
+            return None
+
+    def get_tasks_by_group_id(self, group_id: str) -> List[Dict[str, Any]]:
+        """Get all tasks belonging to a specific group ID (collaborative tasks)."""
+        self._ensure_connection()
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Query tasks where metadata->>'group_id' matches
+                cur.execute("""
+                    SELECT id, agent_id, status, metadata
+                    FROM tasks
+                    WHERE metadata->>'group_id' = %s
+                """, (group_id,))
+                return [dict(row) for row in cur.fetchall()]
+        except Exception as e:
+            print(f"Warning: Failed to get group tasks: {e}")
+            return []
+
     def get_current_task(self, agent_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Get the most recent pending task from the tasks table.
@@ -99,7 +134,8 @@ class PostgresClient:
                     return dict(row)
                 return None
         except Exception as e:
-            raise RuntimeError(f"Failed to get current task: {e}")
+            print(f"Warning: Failed to get current task: {e}")
+            return None
     
     def get_task_progress_max_percent(self, task_id: int) -> int:
         """

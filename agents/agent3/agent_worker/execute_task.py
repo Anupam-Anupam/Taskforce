@@ -550,6 +550,68 @@ def main():
     print("AGENT_RESPONSE_END")
     print("=" * 60)
     
+    # Check for collaboration and wait if needed
+    if result['status'] == 'success' and task_id:
+        try:
+            postgres_url = os.getenv("POSTGRES_URL")
+            if postgres_url:
+                # Import locally to avoid top-level dependency if not needed
+                from db_adapters import PostgresClient
+                pg_client = PostgresClient(postgres_url)
+                
+                # Get current task info
+                current_task = pg_client.get_task_by_id(task_id)
+                
+                if current_task and current_task.get('metadata'):
+                    metadata = current_task['metadata']
+                    # Check if mode is collaborate and we have a group_id
+                    if metadata.get('mode') == 'collaborate' and metadata.get('group_id'):
+                        group_id = metadata['group_id']
+                        print("\n=== COLLABORATION MODE ===")
+                        print(f"Task is part of collaboration group: {group_id}")
+                        print("Waiting for other agents to complete...")
+                        
+                        # Poll for completion
+                        poll_count = 0
+                        max_polls = 120  # 10 minutes timeout (120 * 5s)
+                        
+                        while poll_count < max_polls:
+                            group_tasks = pg_client.get_tasks_by_group_id(group_id)
+                            if not group_tasks:
+                                print("Warning: No group tasks found.")
+                                break
+                                
+                            # Check statuses
+                            all_finished = True
+                            statuses = []
+                            for t in group_tasks:
+                                s = t.get('status')
+                                agent = t.get('agent_id')
+                                statuses.append(f"{agent}: {s}")
+                                # Consider 'completed', 'failed', or 'cancelled' as finished
+                                if s not in ['completed', 'failed', 'cancelled']:
+                                    all_finished = False
+                            
+                            if all_finished:
+                                print("✓ All agents have finished their tasks.")
+                                print(f"Final Statuses: {', '.join(statuses)}")
+                                # Announce completion clearly for logs/chat
+                                print(f"COLLABORATION COMPLETE: All agents finished for group {group_id}")
+                                break
+                            else:
+                                if poll_count % 6 == 0: # Print every 30s
+                                    print(f"Waiting... Statuses: {', '.join(statuses)}")
+                                time.sleep(5)
+                                poll_count += 1
+                        
+                        if poll_count >= max_polls:
+                            print("Warning: Timed out waiting for other agents.")
+        except Exception as e:
+            print(f"Warning: Collaboration check failed: {e}")
+            # Don't fail the task if just the check failed
+            import traceback
+            traceback.print_exc()
+
     # Exit with appropriate code
     if result['status'] == 'success':
         sys.exit(0)

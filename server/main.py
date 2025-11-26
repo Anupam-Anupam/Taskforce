@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 import httpx
+import json
+import openai
 
 # Import storage adapters
 import sys
@@ -73,6 +75,58 @@ pg = PostgresAdapter(connection_string=os.getenv("POSTGRES_URL"))
 
 # Initialize agent manager
 agent_manager = AgentManager()
+
+# Initialize OpenAI client
+# We use a try-except block to handle case where OPENAI_API_KEY might be missing during startup
+try:
+    openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+except Exception as e:
+    print(f"Warning: Failed to initialize OpenAI client: {e}")
+    openai_client = None
+
+def decompose_task(task_text: str, agent_ids: List[str]) -> Dict[str, str]:
+    """Decompose a task into subtasks for each agent."""
+    import logging
+    logger = logging.getLogger("uvicorn")
+    
+    if not openai_client:
+        logger.warning("⚠️ OpenAI client not initialized, falling back to solo mode behavior")
+        return {agent_id: task_text for agent_id in agent_ids}
+        
+    try:
+        num_agents = len(agent_ids)
+        prompt = f"""You are a project manager coordinating a swarm of AI agents.
+Your goal is to break down a complex task into {num_agents} distinct, independent subtasks that can be executed in parallel.
+The agents available are: {', '.join(agent_ids)}.
+
+Task: {task_text}
+
+Return a JSON object where keys are the agent IDs ({', '.join(agent_ids)}) and values are the specific subtask instructions for that agent.
+Ensure the subtasks collectively complete the original task.
+If the task is simple and doesn't need decomposition, you can assign the same or similar tasks, or split the workload.
+JSON format only."""
+
+        logger.info(f"🤖 Calling OpenAI to decompose task...")
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a helpful project manager. Return valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={ "type": "json_object" }
+        )
+        
+        content = response.choices[0].message.content
+        logger.info(f"✅ OpenAI response received: {content[:200]}...")
+        subtasks = json.loads(content)
+        logger.info(f"✅ Parsed subtasks: {subtasks}")
+        return subtasks
+    except Exception as e:
+        logger.error(f"❌ Error decomposing task: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Fallback: same task for everyone
+        return {agent_id: task_text for agent_id in agent_ids}
 
 # Evaluator service URL (uses Docker service name)
 EVALUATOR_URL = os.getenv("EVALUATOR_URL", "http://evaluator_agent:8001")
@@ -173,12 +227,16 @@ def get_task(task_id: int):
 @app.post("/chat/send", response_model=ChatMessageResponse)
 def send_chat_message(message: ChatMessageRequest):
     """Send a chat message. User messages create tasks automatically."""
+    import logging
+    logger = logging.getLogger("uvicorn")
+    
     try:
         timestamp = datetime.now(timezone.utc)
         message_id = f"msg_{int(timestamp.timestamp() * 1000)}"
         
         # Store message in MongoDB (server DB)
         metadata_payload = dict(message.metadata or {})
+        logger.info(f"📨 Received message. Metadata: {metadata_payload}")
         chat_doc = {
             "message_id": message_id,
             "sender": message.sender,
@@ -209,21 +267,52 @@ def send_chat_message(message: ChatMessageRequest):
         if message.sender == "user":
             task_ids = []
             
+            # Check for collaborate mode
+            is_collaborate = metadata_payload.get("mode") == "collaborate"
+            subtasks = {}
+            
+            if is_collaborate:
+                import logging
+                logger = logging.getLogger("uvicorn")
+                logger.info(f"🔥 COLLABORATE MODE DETECTED! Decomposing task for {len(agent_ids)} agents...")
+                subtasks = decompose_task(message.message, agent_ids)
+                logger.info(f"📝 Subtasks generated: {subtasks}")
+            
             for agent_id in agent_ids:
+                # If collaborate mode, use subtask; otherwise use full message
+                if is_collaborate:
+                    task_description = subtasks.get(agent_id, message.message)
+                    task_title = f"Subtask: {task_description[:50]}..."
+                    task_metadata = {
+                        "chat_message_id": message_id, 
+                        "target_agents": agent_ids,
+                        "mode": "collaborate",
+                        "group_id": message_id,
+                        "original_task": message.message
+                    }
+                else:
+                    task_description = message.message
+                    task_title = message.message[:100]
+                    task_metadata = {
+                        "chat_message_id": message_id, 
+                        "target_agents": agent_ids,
+                        "mode": "solo"
+                    }
+
                 agent_task_id = pg.create_task(
                     agent_id=agent_id,
-                    title=message.message[:100],
-                    description=message.message,
+                    title=task_title,
+                    description=task_description,
                     status="pending",
-                    metadata={"chat_message_id": message_id, "target_agents": agent_ids}
+                    metadata=task_metadata
                 )
                 task_ids.append(agent_task_id)
                 
                 server_mongo.write_log(
                     level="info",
-                    message=f"User message created task {agent_task_id} for {agent_id}",
+                    message=f"User message created task {agent_task_id} for {agent_id} (Mode: {task_metadata.get('mode')})",
                     task_id=str(agent_task_id),
-                    metadata={"chat_message_id": message_id, "target_agents": agent_ids}
+                    metadata=task_metadata
                 )
             
             # Use the first task ID as the primary task ID for the chat message

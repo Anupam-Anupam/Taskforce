@@ -347,6 +347,18 @@ class AgentRunner:
                         message=f"Failed to update task response: {str(e)}"
                     )
                 
+                # Write agent response to MongoDB for chat display
+                if response_text and response_text.strip():
+                    try:
+                        self.mongo.write_log(
+                            task_id=task_id,
+                            level="info",
+                            message=response_text,
+                            meta={"source": "agent_output", "type": "agent_response"}
+                        )
+                    except Exception as e:
+                        print(f"[{self.config.agent_id}] Warning: Failed to log agent response to MongoDB: {e}")
+                
                 # Insert final 100% progress if not already
                 if final_percent < 100:
                     self.postgres.insert_progress(

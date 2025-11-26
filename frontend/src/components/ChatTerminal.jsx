@@ -34,13 +34,11 @@ const ChatTerminal = () => {
   const composerRef = useRef(null);
   const abortRef = useRef(false);
   const prevMessageCountRef = useRef(0);
-  const attachmentButtonRef = useRef(null);
   const [agentsStatus, setAgentsStatus] = useState({});
   const [mentionQuery, setMentionQuery] = useState('');
   const [isMentionMenuVisible, setMentionMenuVisible] = useState(false);
   const [mentionCoords, setMentionCoords] = useState({ left: 0, top: 0 });
-  const [isAttachmentMenuVisible, setAttachmentMenuVisible] = useState(false);
-  const [attachmentMenuCoords, setAttachmentMenuCoords] = useState({ left: 0, bottom: 0 });
+  const [isCollaborateMode, setIsCollaborateMode] = useState(false);
 
   const upsertMessages = useCallback((incoming = [], { restampNew = false } = {}) => {
     if (!incoming.length) {
@@ -165,7 +163,6 @@ const ChatTerminal = () => {
     const newValue = `${before}@${agentId} ${after}`.replace(/\s{2,}/g, ' ');
     setInputValue(newValue);
     setMentionMenuVisible(false);
-    setMentionButtonMenuVisible(false);
     const newCursor = before.length + agentId.length + 2;
     requestAnimationFrame(() => {
       inputRef.current?.focus();
@@ -173,19 +170,6 @@ const ChatTerminal = () => {
       setCaretPosition(newCursor);
     });
   }, [caretPosition]);
-
-  const handleAttachmentButtonClick = useCallback(() => {
-    if (attachmentButtonRef.current && composerRef.current) {
-      const buttonRect = attachmentButtonRef.current.getBoundingClientRect();
-      const composerRect = composerRef.current.getBoundingClientRect();
-      const menuWidth = 140;
-      setAttachmentMenuCoords({
-        left: buttonRect.right - composerRect.left - menuWidth - 15,
-        bottom: composerRect.bottom - buttonRect.bottom-15
-      });
-    }
-    setAttachmentMenuVisible(!isAttachmentMenuVisible);
-  }, [isAttachmentMenuVisible]);
   const handlePasswordSubmit = (e) => {
     e.preventDefault();
     if (passwordInput === 'jubilee') {
@@ -293,38 +277,6 @@ const ChatTerminal = () => {
     prevMessageCountRef.current = messages.length;
   }, [messages]);
 
-  // Auto-scroll to bottom on initial load
-  useEffect(() => {
-    if (!historyLoading && messages.length > 0) {
-      // Use setTimeout to ensure DOM is updated
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-      }, 100);
-    }
-  }, [historyLoading, messages.length]);
-
-  // Auto-scroll to bottom when entering chat (authenticated)
-  useEffect(() => {
-    if (isAuthenticated && messages.length > 0) {
-      // Use setTimeout to ensure DOM is updated
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-      }, 100);
-    }
-  }, [isAuthenticated]);
-
-  // Close attachment menu when clicking outside
-  useEffect(() => {
-    if (!isAttachmentMenuVisible) return;
-    const handleClickOutside = (e) => {
-      if (composerRef.current && !composerRef.current.contains(e.target)) {
-        setAttachmentMenuVisible(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isAttachmentMenuVisible]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isAuthenticated) {
@@ -366,7 +318,9 @@ const ChatTerminal = () => {
         body: JSON.stringify({ 
           sender: 'user',
           message: taskText,
-          metadata: {} 
+          metadata: {
+            mode: isCollaborateMode ? 'collaborate' : 'solo'
+          } 
         }),
       });
 
@@ -512,6 +466,49 @@ const ChatTerminal = () => {
       position: 'relative',
       overflow: 'hidden'
     }}>
+      {/* Header with Toggle */}
+      <div style={{
+        padding: '16px 24px',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: 'rgba(20, 20, 20, 0.8)',
+        backdropFilter: 'blur(10px)',
+        zIndex: 10
+      }}>
+        <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#e5e5e5', fontWeight: 600 }}>AI Village Chat</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '0.9rem', color: isCollaborateMode ? '#a78bfa' : '#a3a3a3', transition: 'color 0.2s' }}>
+            {isCollaborateMode ? 'Collaborate Mode' : 'Solo Mode'}
+          </span>
+          <div 
+            onClick={() => setIsCollaborateMode(!isCollaborateMode)}
+            style={{
+              width: '44px',
+              height: '24px',
+              backgroundColor: isCollaborateMode ? 'rgba(124, 58, 237, 0.6)' : 'rgba(255, 255, 255, 0.2)',
+              borderRadius: '12px',
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s'
+            }}
+          >
+            <div style={{
+              width: '20px',
+              height: '20px',
+              backgroundColor: '#fff',
+              borderRadius: '50%',
+              position: 'absolute',
+              top: '2px',
+              left: isCollaborateMode ? '22px' : '2px',
+              transition: 'left 0.2s',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+            }} />
+          </div>
+        </div>
+      </div>
+
       {/* Chat content with higher z-index */}
       <div 
         ref={messagesContainerRef}
@@ -557,16 +554,7 @@ const ChatTerminal = () => {
             </div>
           )}
 
-          {messages.filter((message) => {
-            // Hide messages with task ID lower than 70
-            if (message.taskId) {
-              const taskId = parseInt(message.taskId);
-              if (!isNaN(taskId) && taskId < 70) {
-                return false;
-              }
-            }
-            return true;
-          }).map((message) => {
+          {messages.map((message) => {
             // Updated color mapping for dark purple theme
             // Using darker backgrounds with purple accents
             const agentColors = {
@@ -582,7 +570,6 @@ const ChatTerminal = () => {
             return (
               <div
                 key={message.id}
-                className="chat-message"
                 style={{
                   display: 'flex',
                   gap: '16px',
@@ -721,38 +708,80 @@ const ChatTerminal = () => {
         zIndex: 1,
         position: 'relative'
       }}>
-        <form onSubmit={handleSubmit} style={{
+        <div style={{
           maxWidth: '800px',
           width: '100%',
-          position: 'relative',
           display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
+          flexDirection: 'column',
+          gap: '12px'
         }}>
-          <button
-            type="button"
-            ref={attachmentButtonRef}
-            onClick={handleAttachmentButtonClick}
-            disabled={!isAuthenticated || isLoading}
-            style={{
-              background: isAttachmentMenuVisible ? 'rgba(124, 58, 237, 0.3)' : 'rgba(38, 38, 38, 0.8)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '12px',
-              width: '42px',
-              height: '42px',
+          {/* Collaborate Mode Toggle */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '8px 12px',
+            backgroundColor: 'rgba(26, 26, 26, 0.6)',
+            borderRadius: '12px',
+            border: '1px solid rgba(255, 255, 255, 0.05)'
+          }}>
+            <label style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              cursor: isAuthenticated && !isLoading ? 'pointer' : 'default',
-              color: isAuthenticated && !isLoading ? '#a78bfa' : '#737373',
-              fontSize: '1.5rem',
-              transition: 'all 0.2s',
-              flexShrink: 0,
-              fontWeight: 300
-            }}
-          >
-            +
-          </button>
+              gap: '10px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              flex: 1
+            }}>
+              <div style={{
+                position: 'relative',
+                width: '44px',
+                height: '24px',
+                backgroundColor: isCollaborateMode ? '#7c3aed' : 'rgba(115, 115, 115, 0.3)',
+                borderRadius: '12px',
+                transition: 'background-color 0.3s',
+                boxShadow: isCollaborateMode ? '0 0 10px rgba(124, 58, 237, 0.4)' : 'none'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={isCollaborateMode}
+                  onChange={(e) => setIsCollaborateMode(e.target.checked)}
+                  style={{ display: 'none' }}
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: '2px',
+                  left: isCollaborateMode ? '22px' : '2px',
+                  width: '20px',
+                  height: '20px',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '50%',
+                  transition: 'left 0.3s',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+                }} />
+              </div>
+              <span style={{
+                color: isCollaborateMode ? '#a78bfa' : '#737373',
+                fontSize: '0.9rem',
+                fontWeight: '500',
+                transition: 'color 0.3s'
+              }}>
+                {isCollaborateMode ? '🤝 Collaborate Mode' : '👤 Solo Mode'}
+              </span>
+            </label>
+            <div style={{
+              fontSize: '0.75rem',
+              color: '#525252',
+              fontStyle: 'italic'
+            }}>
+              {isCollaborateMode ? 'Agents work together on subtasks' : 'Each agent works independently'}
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} style={{
+            width: '100%',
+            position: 'relative'
+          }}>
           <input
             type="text"
             ref={inputRef}
@@ -763,7 +792,7 @@ const ChatTerminal = () => {
             placeholder={isAuthenticated ? "Send a message to the agents..." : "Authenticate to send messages"}
             disabled={!isAuthenticated || isLoading}
             style={{
-              flex: 1,
+              width: '100%',
               padding: '16px 50px 16px 20px',
               backgroundColor: 'rgba(26, 26, 26, 0.8)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -803,6 +832,7 @@ const ChatTerminal = () => {
             </svg>
           </button>
         </form>
+        </div>
         {isMentionMenuVisible && mentionOptions.length > 0 && (
           <div
             style={{
@@ -895,51 +925,6 @@ const ChatTerminal = () => {
             <div style={{ padding: '8px 16px 0 16px', fontSize: '0.7rem', color: '#6b7280', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
               Click or keep typing to notify agents with access.
             </div>
-          </div>
-        )}
-        {isAttachmentMenuVisible && (
-          <div
-            className="attachment-menu"
-            style={{
-              position: 'absolute',
-              left: attachmentMenuCoords.left,
-              bottom: `calc(100% - ${attachmentMenuCoords.bottom}px + 8px)`,
-              width: '140px',
-              backgroundColor: 'rgba(15, 15, 20, 0.98)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '12px',
-              padding: '10px 0',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-              boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
-              zIndex: 5,
-              transformOrigin: 'right bottom'
-            }}
-          >
-            {['MP4', 'PDF', 'PNG'].map((type) => (
-              <button
-                key={type}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setAttachmentMenuVisible(false);
-                  // Placeholder for future attachment handling
-                }}
-                style={{
-                  padding: '10px 16px',
-                  border: 'none',
-                  background: 'transparent',
-                  display: 'flex',
-                  width: '100%',
-                  alignItems: 'center',
-                  color: '#e5e5e5',
-                  cursor: 'pointer'
-                }}
-              >
-                <div style={{ fontWeight: 600, color: '#f3f4f6' }}>{type}</div>
-              </button>
-            ))}
           </div>
         )}
       </div>

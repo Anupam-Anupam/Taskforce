@@ -178,88 +178,81 @@ class MongoAdapter:
         
         if agent_id and self.cluster_mode:
             # Cluster mode: connect to specific agent database
-            target_dbs = [f"{agent_id}db", "agent_logs_db"]
-            logs_collection = None
-            
-            for db_name in target_dbs:
-                if db_name not in self.databases:
-                    # Parse connection string to construct agent-specific URL
-                    # connection_string format: mongodb://user:pass@host:port[?options]
-                    if '?' in self.connection_string:
-                        base_url, query_params = self.connection_string.split('?', 1)
-                        db_url = f"{base_url}/{db_name}?{query_params}"
-                    else:
-                        db_url = f"{self.connection_string}/{db_name}?authSource=admin"
+            db_name = f"{agent_id}db"
+            if db_name not in self.databases:
+                # Parse connection string to construct agent-specific URL
+                # connection_string format: mongodb://user:pass@host:port[/dbname][?options]
+                # We need to replace any existing database name with the agent's database
+                if '?' in self.connection_string:
+                    base_url, query_params = self.connection_string.split('?', 1)
+                    # Remove any existing database name from base_url
+                    # mongodb://user:pass@host:port/dbname -> mongodb://user:pass@host:port
+                    if base_url.count('/') >= 3:
+                        base_url = '/'.join(base_url.split('/')[:-1])
+                    db_url = f"{base_url}/{db_name}?{query_params}"
+                else:
+                    # Remove any existing database name
+                    base_url = self.connection_string
+                    if base_url.count('/') >= 3:
+                        base_url = '/'.join(base_url.split('/')[:-1])
+                    db_url = f"{base_url}/{db_name}?authSource=admin"
+                
+                try:
+                    client = MongoClient(db_url)
+                    db = client[db_name]
                     
-                    try:
-                        client = MongoClient(db_url)
-                        db = client[db_name]
-                        
-                        # Check if database exists by listing collections
-                        collections = db.list_collection_names()
-                        
-                        self.databases[db_name] = {
-                            "client": client,
-                            "db": db,
-                            "logs": db.agent_logs,
-                            "initialized": len(collections) > 0
-                        }
-                    except Exception:
-                        continue
-                
-                if db_name in self.databases and self.databases[db_name].get("initialized", False):
-                    # Check if this DB actually has logs for this agent (if it's the shared DB)
-                    coll = self.databases[db_name]["logs"]
-                    # For shared DB, we want to prioritize it only if it has data
-                    # For agent specific DB, we assume it's the right one if it exists
-                    logs_collection = coll
-                    # If we found the specific agent db, prefer it. 
-                    # But if we are looking for a specific task and it's not there, we might want to fall back.
-                    # However, implementing full fallback logic (query 1, then query 2) is better.
-                    break
+                    # Check if database exists by listing collections
+                    # If the agent hasn't started yet, the database won't exist
+                    collections = db.list_collection_names()
+                    
+                    self.databases[db_name] = {
+                        "client": client,
+                        "db": db,
+                        "logs": db.agent_logs,
+                        "initialized": len(collections) > 0
+                    }
+                except Exception as e:
+                    # Return empty list instead of raising error if agent database doesn't exist yet
+                    # This is expected when agents haven't started or haven't written any logs
+                    return []
             
-            # If we didn't find any collection, return empty
-            if logs_collection is None:
+            # Return empty list if database exists but isn't initialized (no collections)
+            if db_name in self.databases and not self.databases[db_name].get("initialized", False):
                 return []
-                
-            # Instead of picking just one collection, we should probably query the one that yields results.
-            # But simpler approach: Try agent specific, if empty result, try shared.
             
-            # Re-implementing the query logic to support fallback
-            collections_to_try = []
-            
-            # 1. Specific DB
-            specific_db = f"{agent_id}db"
-            if specific_db in self.databases and self.databases[specific_db].get("initialized", False):
-                collections_to_try.append(self.databases[specific_db]["logs"])
-                
-            # 2. Shared DB
-            shared_db = "agent_logs_db"
-            if shared_db in self.databases and self.databases[shared_db].get("initialized", False):
-                collections_to_try.append(self.databases[shared_db]["logs"])
-                
-            if not collections_to_try:
+            if db_name not in self.databases or "logs" not in self.databases[db_name]:
+                # Database connection failed or logs collection not found
                 return []
-                
-            # Try collections in order
-            for collection in collections_to_try:
-                # Build query for this collection
-                q = query.copy()
-                # Execute query
-                cursor = collection.find(q).sort("created_at", -1).limit(limit)
-                results = list(cursor)
-                if results:
-                    return results
             
-            return []
-
+            logs_collection = self.databases[db_name]["logs"]
         else:
             if not self.cluster_mode and agent_id and agent_id != self.agent_id:
                 raise ValueError(f"Cannot read logs from different agent in single mode. Use cluster_mode=True.")
             logs_collection = self.logs
-            
-            cursor = logs_collection.find(query).sort("created_at", -1).limit(limit)
-            return list(cursor)
+        
+        if agent_id and self.cluster_mode:
+            query["agent_id"] = agent_id
+        elif not self.cluster_mode:
+            query["agent_id"] = self.agent_id
+        
+        if level is not None:
+            # Support both string and dict (for MongoDB operators like $ne)
+            query["level"] = level
+        
+        if task_id:
+            query["task_id"] = task_id
+        
+        if start_time:
+            query["created_at"] = {"$gte": start_time}
+        
+        if end_time:
+            if "created_at" in query:
+                query["created_at"]["$lte"] = end_time
+            else:
+                query["created_at"] = {"$lte": end_time}
+        
+        cursor = logs_collection.find(query).sort("created_at", -1).limit(limit)
+        return list(cursor)
     
     def write_memory(
         self,
