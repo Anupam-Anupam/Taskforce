@@ -1,0 +1,17 @@
+.aurora-container {
+  width: calc(100vw - 260px);
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 260px;
+  transform: rotate(180deg);
+  pointer-events: none;
+  opacity: 0.3;
+  z-index: 0;
+  transition: opacity 2s ease-out;
+}
+
+.aurora-container canvas {
+  transition: opacity 2s ease-out;
+}
+

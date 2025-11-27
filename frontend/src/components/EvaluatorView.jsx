@@ -45,17 +45,15 @@ const ScoreBreakdown = ({ scores, metrics, penalties, summary, isCompact = false
         })}
       </div>
 
-      {metrics && (
-         <div className="metrics-section" style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px' }}>
-             <h4 className="details-header" style={{ marginBottom: '0.5rem' }}>Raw Metrics</h4>
-             <div style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '1fr 1fr', gap: '0.5rem', fontSize: '0.85rem', color: '#fff' }}>
-                <div>Time: <span style={{ color: '#fff' }}>{metrics.completion_time_s?.toFixed(1)}s</span></div>
-                <div>Errors: <span style={{ color: '#fff' }}>{metrics.error_count}</span></div>
-                <div>API Calls: <span style={{ color: '#fff' }}>{metrics.total_api_calls}</span></div>
-                <div>Cost: <span style={{ color: '#fff' }}>${metrics.cost_usd?.toFixed(4)}</span></div>
-             </div>
-         </div>
-      )}
+      <div className="metrics-section" style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px' }}>
+          <h4 className="details-header" style={{ marginBottom: '0.5rem' }}>Raw Metrics</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '1fr 1fr', gap: '0.5rem', fontSize: '0.85rem', color: '#fff' }}>
+             <div>Time: <span style={{ color: '#fff' }}>{(metrics?.completion_time_s ?? 0).toFixed(1)}s</span></div>
+             <div>Errors: <span style={{ color: '#fff' }}>{metrics?.error_count ?? 0}</span></div>
+             <div>API Calls: <span style={{ color: '#fff' }}>{metrics?.total_api_calls ?? 0}</span></div>
+             <div>Cost: <span style={{ color: '#fff' }}>${(metrics?.cost_usd ?? 0).toFixed(4)}</span></div>
+          </div>
+      </div>
       
       {penalties && Object.keys(penalties).length > 0 && Object.values(penalties).some(v => v > 0) && (
         <div className="penalties-section" style={{ marginTop: '1rem' }}>
