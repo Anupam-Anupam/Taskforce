@@ -2,7 +2,13 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { API_BASE, REFRESH_INTERVALS } from '../config';
 import { ensureDate, normalizePercent, formatPercentLabel, buildAgentMessage, formatTime } from '../utils/chatUtils';
 import collaborateIcon from '../images/928470d7-332a-416c-82cf-871acd43342a.png';
+import webIcon from '../images/web.png';
+import imageIcon from '../images/image.png';
+import codeIcon from '../images/code.png';
+import chatgptIcon from '../images/gpt.png';
+import claudeIcon from '../images/claude-ai.png';
 import Aurora from './Aurora';
+import TextType from './TextType';
 
 const AVAILABLE_AGENTS = ['agent1', 'agent2', 'agent3'];
 
@@ -577,10 +583,18 @@ const ChatTerminal = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#fff',
-              fontSize: '0.7rem',
-              fontWeight: 600
-            }}>AI</div>
+              overflow: 'hidden'
+            }}>
+              <img 
+                src={chatgptIcon} 
+                alt="GPT-5" 
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            </div>
             <div style={{ position: 'relative' }}>
               <button
                 type="button"
@@ -615,10 +629,18 @@ const ChatTerminal = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#fff',
-              fontSize: '0.7rem',
-              fontWeight: 600
-            }}>AI</div>
+              overflow: 'hidden'
+            }}>
+              <img 
+                src={claudeIcon} 
+                alt="Sonnet 4.5" 
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            </div>
             <div style={{ position: 'relative' }}>
               <button
                 type="button"
@@ -653,10 +675,18 @@ const ChatTerminal = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#fff',
-              fontSize: '0.7rem',
-              fontWeight: 600
-            }}>AI</div>
+              overflow: 'hidden'
+            }}>
+              <img 
+                src={chatgptIcon} 
+                alt="GPT-4o" 
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            </div>
             <div style={{ position: 'relative' }}>
               <button
                 type="button"
@@ -739,7 +769,14 @@ const ChatTerminal = () => {
               pointerEvents: 'none',
               zIndex: 0
             }}>
-              What would you like to do?
+              <TextType 
+                text={["What would you like to do?", "Ask me anything...", "How can I help you today?"]}
+                typingSpeed={75}
+                pauseDuration={1500}
+                showCursor={true}
+                cursorCharacter="|"
+                loop={true}
+              />
             </div>
           )}
 
@@ -786,11 +823,11 @@ const ChatTerminal = () => {
             // Updated color mapping for dark purple theme
             // Using darker backgrounds with purple accents
             const agentColors = {
-              'agent1': { bg: 'rgba(6, 78, 59, 0.4)', text: '#34d399', name: 'GPT-5', emoji: '🤖', border: '#065f46' },
-              'agent2': { bg: 'rgba(30, 64, 175, 0.4)', text: '#60a5fa', name: 'Sonnet 4.5', emoji: '🦾', border: '#1e40af' },
-              'agent3': { bg: 'rgba(124, 58, 237, 0.3)', text: '#a78bfa', name: 'GPT-4o', emoji: '🧠', border: '#6d28d9' },
-              'system': { bg: 'rgba(38, 38, 38, 0.6)', text: '#a3a3a3', name: 'System', emoji: '⚙️', border: '#404040' },
-              'user': { bg: 'rgba(38, 38, 38, 0.6)', text: '#a3a3a3', name: 'You', emoji: '👤', border: '#404040' }
+              'agent1': { bg: 'rgba(6, 78, 59, 0.4)', text: '#34d399', name: 'GPT-5', icon: chatgptIcon, border: '#065f46' },
+              'agent2': { bg: 'rgba(30, 64, 175, 0.4)', text: '#60a5fa', name: 'Sonnet 4.5', icon: claudeIcon, border: '#1e40af' },
+              'agent3': { bg: 'rgba(124, 58, 237, 0.3)', text: '#a78bfa', name: 'GPT-4o', icon: chatgptIcon, border: '#6d28d9' },
+              'system': { bg: 'rgba(38, 38, 38, 0.6)', text: '#a3a3a3', name: 'System', icon: null, border: '#404040' },
+              'user': { bg: 'rgba(38, 38, 38, 0.6)', text: '#a3a3a3', name: 'You', icon: null, border: '#404040' }
             };
 
             const agentInfo = agentColors[message.agentId] || agentColors[message.sender] || agentColors['system'];
@@ -819,9 +856,23 @@ const ChatTerminal = () => {
                   flexShrink: 0,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
                   border: `1px solid ${agentInfo.border}`,
-                  backdropFilter: 'blur(8px)'
+                  backdropFilter: 'blur(8px)',
+                  overflow: 'hidden'
                 }}>
-                  {agentInfo.emoji}
+                  {agentInfo.icon ? (
+                    <img 
+                      src={agentInfo.icon} 
+                      alt={agentInfo.name}
+                      style={{
+                        width: '28px',
+                        height: '28px',
+                        objectFit: 'contain',
+                        display: 'block'
+                      }}
+                    />
+                  ) : (
+                    <span>{message.sender === 'user' ? '👤' : '⚙️'}</span>
+                  )}
                 </div>
 
                 {/* Message body */}
@@ -942,11 +993,11 @@ const ChatTerminal = () => {
       >
         {!sessionStartTime && (
           <Aurora
-            colorStops={["#7c3aed", "#a78bfa", "#7c3aed"]}
-            blend={0.6}
-            amplitude={0.8}
+            colorStops={["#9333ea", "#d946ef", "#a855f7"]}
+            blend={1.0}
+            amplitude={1.5}
             speed={inputValue.trim() ? 0 : 0.5}
-            opacity={inputValue.trim() ? 0 : 0.3}
+            opacity={inputValue.trim() ? 0 : 0.5}
           />
         )}
         <div style={{
@@ -1090,7 +1141,15 @@ const ChatTerminal = () => {
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
                 title="Search"
               >
-                🌐
+                <img 
+                  src={webIcon} 
+                  alt="Web" 
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    objectFit: 'contain'
+                  }}
+                />
               </button>
               <button
                 type="button"
@@ -1111,7 +1170,15 @@ const ChatTerminal = () => {
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
                 title="Image"
               >
-                🖼️
+                <img 
+                  src={imageIcon} 
+                  alt="Image" 
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    objectFit: 'contain'
+                  }}
+                />
               </button>
               <button
                 type="button"
@@ -1132,7 +1199,15 @@ const ChatTerminal = () => {
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
                 title="Code"
               >
-                &lt;&gt;
+                <img 
+                  src={codeIcon} 
+                  alt="Code" 
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    objectFit: 'contain'
+                  }}
+                />
               </button>
             </div>
           </form>

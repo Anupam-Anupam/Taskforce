@@ -40,7 +40,7 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
         <div className="app-logo">
           <span className="app-logo__orb" />
           <span className="app-logo__text">
-            <span className="app-logo__label">AI Village</span>
+            <span className="app-logo__label">Agent Task Force</span>
             <span className="app-logo__sub">Multi-agent control room</span>
           </span>
         </div>

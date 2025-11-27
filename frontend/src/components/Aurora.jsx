@@ -97,7 +97,7 @@ void main() {
   float height = snoise(vec2(uv.x * 2.0 + uTime * 0.1, uTime * 0.25)) * 0.5 * uAmplitude;
   height = exp(height);
   height = (uv.y * 2.0 - height + 0.2);
-  float intensity = 0.6 * height;
+  float intensity = 0.9 * height;
   
   float midPoint = 0.20;
   float auroraAlpha = smoothstep(midPoint - uBlend * 0.5, midPoint + uBlend * 0.5, intensity);
@@ -109,7 +109,7 @@ void main() {
 `;
 
 export default function Aurora(props) {
-  const { colorStops = ['#5227FF', '#7cff67', '#5227FF'], amplitude = 1.0, blend = 0.5, speed = 1.0, opacity = 1.0 } = props;
+  const { colorStops = ['#5227FF', '#f059de', '#5227FF'], amplitude = 1.0, blend = 0.5, speed = 1.0, opacity = 1.0 } = props;
   const propsRef = useRef(props);
   propsRef.current = props;
 

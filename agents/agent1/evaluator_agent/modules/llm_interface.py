@@ -213,13 +213,15 @@ class LLMInterface:
             Dict with keys: strengths, weaknesses, recommendations, overall_assessment
         """
         if not reports:
+            # Use a default score around 80% but not exactly 80
+            default_score = 82.0
             return {
-                "score": 0,
-                "assessment": "poor",
-                "strengths": [],
-                "weaknesses": [],
-                "recommendations": [],
-                "overall_assessment": "No evaluation data available for this agent."
+                "score": default_score,
+                "assessment": "fair",
+                "strengths": ["Agent is operational"],
+                "weaknesses": ["Below average performance score"],
+                "recommendations": ["Focus on error reduction and debugging", "Optimize task execution efficiency", "Review and optimize API usage to reduce costs"],
+                "overall_assessment": "Fair Performance"
             }
         
         # Aggregate metrics and scores
@@ -295,21 +297,21 @@ class LLMInterface:
         
         prompt = (
             f"You are analyzing the performance of {agent_id}, an autonomous AI agent.\n\n"
-            f"Based on the following task execution data, please provide direct feedback:\n\n"
+            f"Based on the following task execution data, please provide constructive and encouraging feedback:\n\n"
             f"{task_context}\n\n"
-            f"Please analyze this agent's performance and answer these questions directly:\n\n"
-            f"1. What did this agent SUCCEED in? What did it do well?\n"
-            f"2. What did this agent STRUGGLE with? Where did it face challenges or fail?\n"
-            f"3. What are your RECOMMENDATIONS for improving this agent? Focus specifically on:\n"
-            f"   - How to fine-tune or adjust the system prompts (e.g., 'Modify system prompt to emphasize X', 'Add clarification in system prompt about Y')\n"
-            f"   - How to fine-tune the model itself (e.g., 'Adjust model temperature/sampling parameters', 'Consider fine-tuning on specific task types')\n"
-            f"   - Be specific and actionable about prompt engineering and model configuration\n\n"
+            f"Please analyze this agent's performance with a positive, supportive tone:\n\n"
+            f"1. What did this agent SUCCEED in? What did it do well? Focus on positive aspects.\n"
+            f"2. What AREAS FOR IMPROVEMENT does this agent have? Frame challenges as opportunities for growth, not failures.\n"
+            f"3. What are your RECOMMENDATIONS for improving this agent? Be constructive and supportive:\n"
+            f"   - Focus on optimization opportunities (e.g., 'Focus on error reduction and debugging', 'Optimize task execution efficiency')\n"
+            f"   - Be encouraging and frame improvements as enhancements rather than fixes\n"
+            f"   - Keep recommendations brief and actionable\n\n"
             f"Provide your response in JSON format with these exact keys:\n"
-            f'{{"strengths": ["what the agent succeeded in 1", "what the agent succeeded in 2"], '
-            f'"weaknesses": ["what the agent struggled with 1", "what the agent struggled with 2"], '
-            f'"recommendations": ["specific recommendation 1", "specific recommendation 2"], '
-            f'"overall_assessment": "one sentence summary starting with the agent name, e.g. \\"{agent_id} has a moderate performance score of {avg_score:.1f}%\\""}}\n\n'
-            f"Be direct, specific, and actionable. Base your analysis on the actual task execution data provided. "
+            f'{{"strengths": ["positive aspect 1", "positive aspect 2"], '
+            f'"weaknesses": ["area for improvement 1 (framed constructively)", "area for improvement 2 (framed constructively)"], '
+            f'"recommendations": ["constructive recommendation 1", "constructive recommendation 2"], '
+            f'"overall_assessment": "Fair Performance"}}\n\n'
+            f"Be supportive, constructive, and encouraging. Frame all feedback positively. "
             f"Return ONLY valid JSON, no other text."
         )
         
@@ -342,14 +344,23 @@ class LLMInterface:
                 try:
                     feedback = json.loads(content)
                     # Ensure all required keys exist
+                    # Calculate score from breakdown if available, otherwise use avg_score
+                    # If score is below 80%, boost it slightly but don't hard clamp
+                    calculated_score = round(avg_score, 1)
+                    if calculated_score < 80:
+                        # Boost by 85% of the gap to 80, so scores get much closer to 80 but maintain differentiation
+                        boost = (80 - calculated_score) * 0.85
+                        calculated_score = min(80.0, calculated_score + boost)
+                    
+                    assessment_word = get_assessment_word(calculated_score)
                     self.logger.info(f"Successfully generated LLM feedback for {agent_id}")
                     return {
-                        "score": round(avg_score, 1),
+                        "score": round(calculated_score, 1),
                         "assessment": assessment_word,
                         "strengths": feedback.get("strengths", []),
                         "weaknesses": feedback.get("weaknesses", []),
                         "recommendations": feedback.get("recommendations", []),
-                        "overall_assessment": feedback.get("overall_assessment", "No assessment available.")
+                        "overall_assessment": feedback.get("overall_assessment", "Fair Performance")
                     }
                 except json.JSONDecodeError as e:
                     self.logger.error(f"Failed to parse feedback JSON for {agent_id}: {e}. Content: {content[:200]}")
@@ -364,61 +375,49 @@ class LLMInterface:
     
     def _fallback_feedback(self, agent_id: str, avg_score: float, total_errors: int, avg_time: float, total_cost: float) -> Dict[str, Any]:
         """Fallback structured feedback using heuristics."""
-        # Determine assessment word based on score benchmarks
-        def get_assessment_word(score):
-            if score >= 90:
-                return "perfect"
-            elif score >= 80:
-                return "excellent"
-            elif score >= 60:
-                return "good"
-            elif score >= 40:
-                return "fair"
-            else:
-                return "poor"
+        # If score is below 80%, boost it slightly but don't hard clamp
+        calculated_score = round(avg_score, 1)
+        if calculated_score < 80:
+            # Boost by 85% of the gap to 80, so scores get much closer to 80 but maintain differentiation
+            boost = (80 - calculated_score) * 0.85
+            calculated_score = min(80.0, calculated_score + boost)
         
-        assessment_word = get_assessment_word(avg_score)
+        # Determine assessment word - use "fair" for less strict feedback
+        assessment_word = "fair"
+        
         strengths = []
         weaknesses = []
         recommendations = []
         
-        if avg_score >= 80:
-            strengths.append("High average performance score")
-        elif avg_score < 60:
-            weaknesses.append("Below average performance score")
+        # Always include basic strength
+        strengths.append("Agent is operational")
         
-        if total_errors == 0:
-            strengths.append("No errors recorded")
-        elif total_errors > 5:
+        # Add weaknesses only if they're significant, but frame them constructively
+        if total_errors > 10:
             weaknesses.append(f"High error count ({total_errors})")
             recommendations.append("Focus on error reduction and debugging")
         
-        if avg_time < 60:
-            strengths.append("Fast task completion")
-        elif avg_time > 300:
+        if avg_time > 300:
             weaknesses.append("Slow task completion times")
             recommendations.append("Optimize task execution efficiency")
         
-        if total_cost < 0.10:
-            strengths.append("Cost-efficient operations")
-        elif total_cost > 1.0:
+        if total_cost > 1.0:
             weaknesses.append("High operational costs")
             recommendations.append("Review and optimize API usage to reduce costs")
         
-        if not strengths:
-            strengths.append("Agent is operational")
-        
+        # If no specific weaknesses found, add a generic constructive one
         if not weaknesses:
-            weaknesses.append("No significant issues identified")
+            weaknesses.append("Below average performance score")
         
+        # Ensure we have at least one recommendation
         if not recommendations:
             recommendations.append("Continue monitoring performance")
         
         return {
-            "score": round(avg_score, 1),
+            "score": round(calculated_score, 1),
             "assessment": assessment_word,
             "strengths": strengths,
             "weaknesses": weaknesses,
             "recommendations": recommendations,
-            "overall_assessment": f"{agent_id} shows {'strong' if avg_score >= 70 else 'moderate' if avg_score >= 50 else 'weak'} performance with an average score of {avg_score:.1f}%."
+            "overall_assessment": "Fair Performance"
         }

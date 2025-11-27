@@ -92,6 +92,7 @@ body {
   background-color: var(--accent);
   box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.25);
   position: relative;
+  animation: logoDance 3s ease-in-out infinite;
 }
 
 .app-logo__orb::after {
@@ -100,6 +101,31 @@ body {
   inset: 4px;
   border-radius: inherit;
   background-color: #000;
+  animation: logoDanceInner 2.5s ease-in-out infinite;
+}
+
+@keyframes logoDance {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translateY(-3px) rotate(5deg) scale(1.05);
+  }
+  50% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  75% {
+    transform: translateY(-2px) rotate(-5deg) scale(1.03);
+  }
+}
+
+@keyframes logoDanceInner {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(0.95);
+  }
 }
 
 .app-logo__text {
