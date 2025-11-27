@@ -321,9 +321,9 @@ const EvaluatorView = () => {
                         const feedback = agentFeedback[agentId];
                         const isExpanded = expandedFeedback[agentId];
                         const agentLabels = {
-                            'agent1': 'Agent 1 - GPT4',
-                            'agent2': 'Agent 2 - GPT 5',
-                            'agent3': 'Agent 3 - GPT 4.1'
+                            'agent1': 'Agent 1 - GPT-5',
+                            'agent2': 'Agent 2 - Sonnet 4.5',
+                            'agent3': 'Agent 3 - GPT-4o'
                         };
                         
                         if (!feedback) {
@@ -459,9 +459,9 @@ const EvaluatorView = () => {
                         const color = isCompleted ? '#22c55e' : (score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444');
                         const isExpanded = expandedAgents[agentId];
                         const agentLabels = {
-                            'agent1': 'Agent 1 - GPT4',
-                            'agent2': 'Agent 2 - GPT 5',
-                            'agent3': 'Agent 3 - GPT 4.1'
+                            'agent1': 'Agent 1 - GPT-5',
+                            'agent2': 'Agent 2 - Sonnet 4.5',
+                            'agent3': 'Agent 3 - GPT-4o'
                         };
                         
                         return (

@@ -225,7 +225,7 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
             print("Creating ComputerAgent instance...")
             try:
                 agent = ComputerAgent(
-                    model="omniparser+openai/gpt-4o",
+                    model="omniparser+openai/gpt-5",
                     tools=[computer],
                     only_n_most_recent_images=3,
                     verbosity=logging.INFO,
@@ -402,6 +402,19 @@ Remember: You have up to 50 turns to complete tasks, so take your time and be me
             # Simple fallback: just print the task
             result["output"] = f"Task received: {task_description}\nTask execution completed (fallback mode - CUA agent not available: {str(e)})"
             result["status"] = "success"
+            
+            # Log to MongoDB in fallback mode since trajectory processor won't be running
+            if mongo_client:
+                try:
+                    mongo_client.write_log(
+                        task_id=task_id,
+                        level="info",
+                        message=result["output"],
+                        meta={"source": "agent_output", "type": "agent_response"}
+                    )
+                except Exception as log_err:
+                    print(f"Warning: Failed to log fallback output: {log_err}")
+            
             print(f"Task received: {task_description}")
             print("Task execution completed (fallback mode)")
             
@@ -411,6 +424,19 @@ Remember: You have up to 50 turns to complete tasks, so take your time and be me
             print("Falling back to simple execution...")
             result["output"] = f"Task received: {task_description}\nTask execution completed (fallback mode - {str(e)})"
             result["status"] = "success"
+            
+            # Log to MongoDB in fallback mode since trajectory processor won't be running
+            if mongo_client:
+                try:
+                    mongo_client.write_log(
+                        task_id=task_id,
+                        level="info",
+                        message=result["output"],
+                        meta={"source": "agent_output", "type": "agent_response"}
+                    )
+                except Exception as log_err:
+                    print(f"Warning: Failed to log fallback output: {log_err}")
+            
             print(f"Task received: {task_description}")
             print("Task execution completed (fallback mode)")
             
