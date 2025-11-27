@@ -149,21 +149,21 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
             # First, check for required environment variables
             cua_api_key = os.getenv("CUA_API_KEY")
             cua_sandbox_name = os.getenv("CUA_SANDBOX_NAME", "default")
-            openai_api_key = os.getenv("OPENAI_API_KEY")
+            anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
             
             print("Checking CUA environment variables...")
             missing_vars = []
             if not cua_api_key:
                 missing_vars.append("CUA_API_KEY")
-            if not openai_api_key:
-                missing_vars.append("OPENAI_API_KEY")
+            if not anthropic_api_key:
+                missing_vars.append("ANTHROPIC_API_KEY")
             
             if missing_vars:
                 raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
             
             print(f"✓ CUA_API_KEY is set (length: {len(cua_api_key)})")
             print(f"✓ CUA_SANDBOX_NAME: {cua_sandbox_name}")
-            print(f"✓ OPENAI_API_KEY is set (length: {len(openai_api_key)})")
+            print(f"✓ ANTHROPIC_API_KEY is set (length: {len(anthropic_api_key)})")
             
             # Import from cua packages (installed via pip as cua-agent, cua-computer)
             # But imported as 'agent' and 'computer' modules
@@ -234,7 +234,7 @@ async def execute_task_async(task_description: str, task_id: Optional[int] = Non
             print("Creating ComputerAgent instance...")
             try:
                 agent = ComputerAgent(
-                    model="omniparser+openai/gpt-5",
+                    model="omniparser+anthropic/claude-sonnet-4-5-20250929",
                     tools=[computer],
                     only_n_most_recent_images=3,
                     verbosity=logging.INFO,
@@ -339,7 +339,7 @@ Remember: You have up to 50 turns to complete tasks, so take your time and be me
                     try:
                         print("Creating fresh agent instance for retry...")
                         fresh_agent = ComputerAgent(
-                            model="omniparser+openai/gpt-4o",
+                            model="omniparser+anthropic/claude-4.5-sonnet",
                             tools=[computer],
                             only_n_most_recent_images=3,
                             verbosity=logging.INFO,
@@ -411,6 +411,19 @@ Remember: You have up to 50 turns to complete tasks, so take your time and be me
             # Simple fallback: just print the task
             result["output"] = f"Task received: {task_description}\nTask execution completed (fallback mode - CUA agent not available: {str(e)})"
             result["status"] = "success"
+            
+            # Log to MongoDB in fallback mode since trajectory processor won't be running
+            if mongo_client:
+                try:
+                    mongo_client.write_log(
+                        task_id=task_id,
+                        level="info",
+                        message=result["output"],
+                        meta={"source": "agent_output", "type": "agent_response"}
+                    )
+                except Exception as log_err:
+                    print(f"Warning: Failed to log fallback output: {log_err}")
+            
             print(f"Task received: {task_description}")
             print("Task execution completed (fallback mode)")
             
@@ -420,6 +433,19 @@ Remember: You have up to 50 turns to complete tasks, so take your time and be me
             print("Falling back to simple execution...")
             result["output"] = f"Task received: {task_description}\nTask execution completed (fallback mode - {str(e)})"
             result["status"] = "success"
+            
+            # Log to MongoDB in fallback mode since trajectory processor won't be running
+            if mongo_client:
+                try:
+                    mongo_client.write_log(
+                        task_id=task_id,
+                        level="info",
+                        message=result["output"],
+                        meta={"source": "agent_output", "type": "agent_response"}
+                    )
+                except Exception as log_err:
+                    print(f"Warning: Failed to log fallback output: {log_err}")
+            
             print(f"Task received: {task_description}")
             print("Task execution completed (fallback mode)")
             

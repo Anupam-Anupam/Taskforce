@@ -601,7 +601,7 @@ const ChatTerminal = () => {
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                GPT 4
+                GPT-5
                 <span style={{ fontSize: '0.7rem', color: '#a3a3a3' }}>▼</span>
               </button>
             </div>
@@ -639,7 +639,7 @@ const ChatTerminal = () => {
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                GPT 5
+                Sonnet 4.5
                 <span style={{ fontSize: '0.7rem', color: '#a3a3a3' }}>▼</span>
               </button>
             </div>
@@ -677,7 +677,7 @@ const ChatTerminal = () => {
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                GPT 4.1
+                GPT-4o
                 <span style={{ fontSize: '0.7rem', color: '#a3a3a3' }}>▼</span>
               </button>
             </div>
@@ -786,9 +786,9 @@ const ChatTerminal = () => {
             // Updated color mapping for dark purple theme
             // Using darker backgrounds with purple accents
             const agentColors = {
-              'agent1': { bg: 'rgba(6, 78, 59, 0.4)', text: '#34d399', name: 'GPT 4', emoji: '🤖', border: '#065f46' },
-              'agent2': { bg: 'rgba(30, 64, 175, 0.4)', text: '#60a5fa', name: 'GPT 5', emoji: '🦾', border: '#1e40af' },
-              'agent3': { bg: 'rgba(124, 58, 237, 0.3)', text: '#a78bfa', name: 'GPT 4.1', emoji: '🧠', border: '#6d28d9' },
+              'agent1': { bg: 'rgba(6, 78, 59, 0.4)', text: '#34d399', name: 'GPT-5', emoji: '🤖', border: '#065f46' },
+              'agent2': { bg: 'rgba(30, 64, 175, 0.4)', text: '#60a5fa', name: 'Sonnet 4.5', emoji: '🦾', border: '#1e40af' },
+              'agent3': { bg: 'rgba(124, 58, 237, 0.3)', text: '#a78bfa', name: 'GPT-4o', emoji: '🧠', border: '#6d28d9' },
               'system': { bg: 'rgba(38, 38, 38, 0.6)', text: '#a3a3a3', name: 'System', emoji: '⚙️', border: '#404040' },
               'user': { bg: 'rgba(38, 38, 38, 0.6)', text: '#a3a3a3', name: 'You', emoji: '👤', border: '#404040' }
             };
@@ -1065,7 +1065,8 @@ const ChatTerminal = () => {
                 }}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14M19 12l-7 7-7-7"></path>
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <path d="M22 2L15 22 11 13 2 9 22 2z"></path>
                 </svg>
               </button>
             </div>
@@ -1204,7 +1205,7 @@ const ChatTerminal = () => {
                     </div>
                     <div style={{ textAlign: 'left' }}>
                       <div style={{ fontWeight: 600, color: '#f3f4f6' }}>
-                        {agentId === 'agent1' ? 'GPT 4' : agentId === 'agent2' ? 'GPT 5' : agentId === 'agent3' ? 'GPT 4.1' : agentId}
+                        {agentId === 'agent1' ? 'GPT-5' : agentId === 'agent2' ? 'Sonnet 4.5' : agentId === 'agent3' ? 'GPT-4o' : agentId}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
                         {isOnline ? 'Ready for tasks' : 'Agent unreachable'}

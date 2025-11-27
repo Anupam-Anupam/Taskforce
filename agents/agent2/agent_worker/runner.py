@@ -348,7 +348,9 @@ class AgentRunner:
                     )
                 
                 # Write agent response to MongoDB for chat display
-                if response_text and response_text.strip():
+                # Only log if return_code is non-zero (error)
+                # If success (0), the agent/trajectory processor handles logging to avoid duplicates
+                if response_text and response_text.strip() and return_code != 0:
                     try:
                         self.mongo.write_log(
                             task_id=task_id,

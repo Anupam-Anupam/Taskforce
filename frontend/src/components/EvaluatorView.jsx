@@ -322,9 +322,9 @@ const EvaluatorView = () => {
                         const feedback = agentFeedback[agentId];
                         const isExpanded = expandedFeedback[agentId];
                         const agentLabels = {
-                            'agent1': 'Agent 1 - GPT4',
-                            'agent2': 'Agent 2 - GPT 5',
-                            'agent3': 'Agent 3 - GPT 4.1'
+                            'agent1': 'Agent 1 - GPT-5',
+                            'agent2': 'Agent 2 - Sonnet 4.5',
+                            'agent3': 'Agent 3 - GPT-4o'
                         };
                         
                         if (!feedback) {
@@ -527,6 +527,56 @@ const EvaluatorView = () => {
                             );
                         })
                     )}
+                    {['agent1', 'agent2', 'agent3'].map(agentId => {
+                        const data = agentScores[agentId];
+                        const isCompleted = data?.is_completed || false;
+                        const score = isCompleted ? 100 : (data?.score || 0);
+                        const color = isCompleted ? '#22c55e' : (score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444');
+                        const isExpanded = expandedAgents[agentId];
+                        const agentLabels = {
+                            'agent1': 'Agent 1 - GPT-5',
+                            'agent2': 'Agent 2 - Sonnet 4.5',
+                            'agent3': 'Agent 3 - GPT-4o'
+                        };
+                        
+                        return (
+                            <div 
+                                className={`agent-performance-item ${data ? 'clickable' : ''}`} 
+                                key={agentId}
+                                onClick={() => data && toggleAgent(agentId)}
+                                style={{ cursor: data ? 'pointer' : 'default' }}
+                            >
+                                <div className="perf-header">
+                                    <span className="perf-name">{agentLabels[agentId] || agentId}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span className="perf-score" style={{ color }}>{score.toFixed(1)}%</span>
+                                        {data && <span className={`chevron ${isExpanded ? 'expanded' : ''}`}>▼</span>}
+                                    </div>
+                                </div>
+                                <div className="perf-bar-bg">
+                                    <div className="perf-bar-fill" style={{ 
+                                        width: `${score}%`,
+                                        backgroundColor: color
+                                    }}></div>
+                                </div>
+                                
+                                <div className={`agent-details-dropdown ${isExpanded ? 'expanded' : ''}`}>
+                                    <div className="agent-details-content">
+                                         {data && (
+                                             <ScoreBreakdown 
+                                                scores={data.breakdown}
+                                                metrics={data.metrics}
+                                                penalties={data.penalties}
+                                                summary={data.summary}
+                                                isCompact={true}
+                                                isCompleted={isCompleted}
+                                             />
+                                         )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
