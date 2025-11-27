@@ -30,111 +30,6 @@ class Health(BaseModel):
     status: str
 
 
-def build_score_breakdown(report_scores: dict, metrics: dict, is_completed: bool = False) -> dict:
-    """
-    Build a score breakdown dictionary from available scores and metrics.
-    Maps the simplified scoring structure to the detailed breakdown expected by the frontend.
-    """
-    # Get output_score (0-100) and final_score (0-1)
-    output_score = report_scores.get("output_score", 0.0)
-    final_score = report_scores.get("final_score", 0.0)
-    
-    # Normalize output_score to 0-1 range if needed
-    if output_score > 1.0:
-        output_score_normalized = output_score / 100.0
-    else:
-        output_score_normalized = output_score
-    
-    # Normalize final_score to 0-1 range if needed
-    if final_score > 1.0:
-        final_score_normalized = final_score / 100.0
-    else:
-        final_score_normalized = final_score
-    
-    # If task is completed, set correctness to 1.0 (100%)
-    if is_completed:
-        correctness = 1.0
-    else:
-        # Use output_score as correctness (normalized to 0-1)
-        correctness = output_score_normalized
-    
-    # Calculate other metrics based on available data
-    completion_time = float(metrics.get("completion_time_s", 0.0) or 0.0)
-    error_count = float(metrics.get("error_count", 0) or 0)
-    retry_count = float(metrics.get("retry_count", 0) or 0)
-    total_api_calls = float(metrics.get("total_api_calls", 0) or 0)
-    cost_usd = float(metrics.get("cost_usd", 0.0) or 0.0)
-    
-    # Efficiency: based on completion time and API calls
-    # Lower time and fewer API calls = higher efficiency
-    # Normalize: 0-300s = 1.0, 300-600s = 0.5-1.0, 600s+ = 0.0-0.5
-    # If completion_time is 0 or missing, we can't calculate efficiency - use a default based on other metrics
-    if completion_time <= 0:
-        # If we have API calls but no time, assume moderate efficiency
-        if total_api_calls > 0:
-            efficiency = 0.7  # Moderate efficiency if we have activity but no time data
-        else:
-            efficiency = 0.5  # Unknown - use neutral value
-    elif completion_time <= 300:
-        efficiency = 1.0
-    elif completion_time <= 600:
-        efficiency = 1.0 - ((completion_time - 300) / 600.0) * 0.5
-    else:
-        efficiency = max(0.0, 0.5 - ((completion_time - 600) / 600.0) * 0.5)
-    
-    # Penalize for excessive API calls
-    if total_api_calls > 50:
-        api_penalty = min(0.3, (total_api_calls - 50) / 200.0)
-        efficiency = max(0.0, efficiency - api_penalty)
-    
-    # Quality: based on correctness and error rate
-    # Higher correctness and fewer errors = higher quality
-    error_penalty = min(0.5, error_count * 0.1)
-    quality = max(0.0, correctness - error_penalty)
-    
-    # Stability: based on error count and retry count
-    # Fewer errors and retries = higher stability
-    stability = max(0.0, 1.0 - (error_count * 0.15) - (retry_count * 0.1))
-    stability = min(1.0, stability)
-    
-    # Autonomy: based on human/agent requests (dependencies)
-    # Fewer dependencies = higher autonomy
-    deps = float(metrics.get("human_or_agent_requests", 0) or 0)
-    autonomy = max(0.0, 1.0 - (deps * 0.2))
-    autonomy = min(1.0, autonomy)
-    
-    # Resource efficiency: based on cost and memory usage
-    # Lower cost = higher resource efficiency
-    # Normalize: $0-0.10 = 1.0, $0.10-1.00 = 0.5-1.0, $1.00+ = 0.0-0.5
-    # If cost is 0, check if we have API calls - if yes, cost data might be missing
-    if cost_usd <= 0:
-        # If we have API calls but no cost, assume moderate efficiency
-        if total_api_calls > 0:
-            resource_efficiency = 0.7  # Moderate efficiency if we have activity but no cost data
-        else:
-            resource_efficiency = 0.5  # Unknown - use neutral value
-    elif cost_usd <= 0.10:
-        resource_efficiency = 1.0
-    elif cost_usd <= 1.00:
-        resource_efficiency = 1.0 - ((cost_usd - 0.10) / 0.90) * 0.5
-    else:
-        resource_efficiency = max(0.0, 0.5 - ((cost_usd - 1.00) / 2.00) * 0.5)
-    
-    # Also consider memory usage if available
-    memory_mb = float(metrics.get("memory_usage_mb", 0.0) or 0.0)
-    if memory_mb > 1000:  # > 1GB
-        resource_efficiency = max(0.0, resource_efficiency - 0.2)
-    
-    return {
-        "correctness": round(correctness, 4),
-        "efficiency": round(efficiency, 4),
-        "quality": round(quality, 4),
-        "stability": round(stability, 4),
-        "autonomy": round(autonomy, 4),
-        "resource_efficiency": round(resource_efficiency, 4),
-    }
-
-
 def create_app() -> FastAPI:
     app = FastAPI(title="Evaluator Agent API", version="1.0.0")
 
@@ -204,23 +99,18 @@ def create_app() -> FastAPI:
                         if is_completed:
                             final_score = 100.0
                         else:
-                            final_score = report["scores"].get("final_score", 0)
-                            # Convert to percentage if it's a fraction (0-1)
-                            if final_score <= 1.0:
-                                final_score *= 100
-                        
-                        # Build detailed breakdown from scores and metrics
-                        report_scores = report.get("scores", {})
-                        report_metrics = report.get("metrics", {})
-                        breakdown = build_score_breakdown(report_scores, report_metrics, is_completed)
+                        final_score = report["scores"].get("final_score", 0)
+                        # Convert to percentage if it's a fraction (0-1)
+                        if final_score <= 1.0:
+                            final_score *= 100
                         
                         # Update agent score (will keep updating to latest)
                         agent_scores[agent_id] = {
                             "score": round(final_score, 2),
                             "task_id": task_id,
                             "evaluated_at": report.get("evaluated_at"),
-                            "breakdown": breakdown,
-                            "metrics": report_metrics,
+                            "breakdown": report.get("scores", {}),
+                            "metrics": report.get("metrics", {}),
                             "penalties": report.get("penalties", {}),
                             "summary": report.get("evaluation_summary", ""),
                             "is_completed": is_completed

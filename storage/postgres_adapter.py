@@ -605,3 +605,19 @@ class PostgresAdapter:
         finally:
             db.close()
 
+    def get_unique_agents(self) -> List[str]:
+        """
+        Get list of unique agent IDs that have tasks in the database.
+        
+        Returns:
+            List of unique agent IDs
+        """
+        db = self.SessionLocal()
+        try:
+            from sqlalchemy import distinct
+            
+            agents = db.query(distinct(Task.agent_id)).order_by(Task.agent_id).all()
+            return [agent[0] for agent in agents if agent[0]]
+        finally:
+            db.close()
+

@@ -33,17 +33,6 @@ class DataCollector:
         task_id = self._normalize_id(task_id)
 
         logs = self.mongo.fetch_task_logs(agent_id, task_id)
-        
-        # Log what we found for debugging
-        self.logger.info(json.dumps({
-            "event": "fetch_task_logs_result",
-            "agent_id": agent_id,
-            "task_id": task_id,
-            "log_count": len(logs),
-            "log_levels": [l.get("level") for l in logs[:10]],  # First 10 log levels
-            "log_messages_sample": [l.get("message", "")[:50] for l in logs[:5]]  # First 5 message previews
-        }))
-        
         metrics = self.mongo.compute_basic_metrics(logs)
         progress = self.pg.get_task_progress(task_id)
 
@@ -51,197 +40,139 @@ class DataCollector:
         mem_usage = 0.0
         cpu_usage = 0.0
         cost_usd = 0.0
-        total_api_calls = 0
+        total_api_calls_from_usage = 0
         completion_tokens = 0
         prompt_tokens = 0
         total_tokens = 0
-        
-        # First, search for "Total usage" logs (most common format from ComputerAgent)
-        # These are INFO level logs with metrics in the message
+
+        # First pass: look for "Total usage" logs emitted by ComputerAgent
         for l in logs:
             message = l.get("message", "")
-            level = l.get("level", "")
-            
-            # Look for "Total usage" pattern (this is the format from ComputerAgent)
             if message and "Total usage" in message:
-                # Normalize the message - handle both literal \n and actual newlines
-                # Replace literal \n with actual newlines for easier parsing
+                total_api_calls_from_usage += 1
                 normalized_message = message.replace("\\n", "\n")
-                
-                # Extract all metrics from this format
-                # Pattern: " - completion_tokens: 172" or "completion_tokens: 172"
+
                 comp_tokens_match = re.search(r"completion_tokens:\s*([0-9]+)", normalized_message)
                 if comp_tokens_match:
                     try:
-                        completion_tokens = int(comp_tokens_match.group(1))  # Use latest value
+                        completion_tokens += int(comp_tokens_match.group(1))
                     except Exception:
                         pass
-                
+
                 prompt_tokens_match = re.search(r"prompt_tokens:\s*([0-9]+)", normalized_message)
                 if prompt_tokens_match:
                     try:
-                        prompt_tokens = int(prompt_tokens_match.group(1))  # Use latest value
+                        prompt_tokens += int(prompt_tokens_match.group(1))
                     except Exception:
                         pass
-                
+
                 total_tokens_match = re.search(r"total_tokens:\s*([0-9]+)", normalized_message)
                 if total_tokens_match:
                     try:
-                        total_tokens = int(total_tokens_match.group(1))  # Use latest value
+                        total_tokens += int(total_tokens_match.group(1))
                     except Exception:
                         pass
-                
-                # Extract response_cost - handle both "$0.0319" and "0.0319" formats
+
                 cost_match = re.search(r"response_cost:\s*\$?([0-9]+(?:\.[0-9]+)?)", normalized_message)
                 if cost_match:
                     try:
-                        cost_val = float(cost_match.group(1))
-                        cost_usd += cost_val  # Sum all costs
-                        total_api_calls += 1
+                        cost_usd += float(cost_match.group(1))
                     except Exception:
                         pass
-                
-                self.logger.info(json.dumps({
-                    "event": "found_total_usage_log",
-                    "level": level,
-                    "extracted_cost": cost_usd,
-                    "extracted_tokens": {"completion": completion_tokens, "prompt": prompt_tokens, "total": total_tokens}
-                }))
-        
-        # Fallback: search for other formats (stderr, etc.)
-        stderr_logs_found = 0
+
+        # Second pass: look at stderr metadata for runs that didn't log Total usage string
         for l in logs:
-            metadata = l.get("metadata", {})
             message = l.get("message", "")
-            level = l.get("level", "")
-            
-            # Skip if we already processed this as a "Total usage" log
             if message and "Total usage" in message:
                 continue
-            
-            # Check stderr field in metadata for CUA usage statistics
+
+            metadata = l.get("metadata", {})
             stderr = metadata.get("stderr", "")
-            
-            # Also check if the message itself contains stderr data
+
             if not stderr and message and "stderr" in message.lower():
-                if "execute_task.py stderr" in message or "stderr" in message.lower():
-                    stderr = message
-            
-            # If still no stderr, check if metadata has the data directly
+                stderr = message
+
             if not stderr:
                 if "response_cost" in str(metadata) or "completion_tokens" in str(metadata):
                     stderr = str(metadata)
-            
-            # Extract from stderr string (whether from metadata.stderr or message)
+
             if stderr and isinstance(stderr, str):
-                # Extract response_cost
                 cost_match = re.search(r"response_cost:\s*\$?([0-9]+(?:\.[0-9]+)?)", stderr)
-                if cost_match and cost_usd == 0.0:  # Only if not already found
+                if cost_match:
                     try:
-                        cost_val = float(cost_match.group(1))
-                        cost_usd += cost_val
-                        total_api_calls += 1
+                        cost_usd += float(cost_match.group(1))
+                        total_api_calls_from_usage += 1
                     except Exception:
                         pass
-                
-                # Extract token counts (only if not already found)
-                if completion_tokens == 0:
-                    comp_tokens_match = re.search(r"completion_tokens:\s*([0-9]+)", stderr)
-                    if comp_tokens_match:
-                        try:
-                            completion_tokens = int(comp_tokens_match.group(1))
-                        except Exception:
-                            pass
-                
-                if prompt_tokens == 0:
-                    prompt_tokens_match = re.search(r"prompt_tokens:\s*([0-9]+)", stderr)
-                    if prompt_tokens_match:
-                        try:
-                            prompt_tokens = int(prompt_tokens_match.group(1))
-                        except Exception:
-                            pass
-                
-                if total_tokens == 0:
-                    total_tokens_match = re.search(r"total_tokens:\s*([0-9]+)", stderr)
-                    if total_tokens_match:
-                        try:
-                            total_tokens = int(total_tokens_match.group(1))
-                        except Exception:
-                            pass
-        
-        # If we didn't find any metrics, try searching recent agent logs (last 10 logs)
-        # This handles cases where the "Total usage" log might have a different task_id
-        if cost_usd == 0.0 and total_api_calls == 0:
-            self.logger.info(json.dumps({
-                "event": "no_metrics_found_in_task_logs",
-                "agent_id": agent_id,
-                "task_id": task_id,
-                "trying_recent_agent_logs": True
-            }))
-            
-            # Try fetching recent logs for this agent (without task_id filter)
+
+                comp_tokens_match = re.search(r"completion_tokens:\s*([0-9]+)", stderr)
+                if comp_tokens_match:
+                    try:
+                        completion_tokens += int(comp_tokens_match.group(1))
+                    except Exception:
+                        pass
+
+                prompt_tokens_match = re.search(r"prompt_tokens:\s*([0-9]+)", stderr)
+                if prompt_tokens_match:
+                    try:
+                        prompt_tokens += int(prompt_tokens_match.group(1))
+                    except Exception:
+                        pass
+
+                total_tokens_match = re.search(r"total_tokens:\s*([0-9]+)", stderr)
+                if total_tokens_match:
+                    try:
+                        total_tokens += int(total_tokens_match.group(1))
+                    except Exception:
+                        pass
+
+        # If still nothing, fetch recent logs for this agent to locate "Total usage"
+        if cost_usd == 0.0 and total_api_calls_from_usage == 0:
             try:
-                recent_agent_logs = self.mongo.read_logs(
-                    agent_id=agent_id,
-                    limit=10  # Get last 10 logs (should include the "Total usage" log)
-                )
-                
-                self.logger.info(json.dumps({
-                    "event": "searching_recent_logs",
-                    "recent_log_count": len(recent_agent_logs),
-                    "sample_messages": [l.get("message", "")[:50] for l in recent_agent_logs[:3]]
-                }))
-                
-                # Search through recent logs for "Total usage" pattern
+                recent_agent_logs = self.mongo.read_logs(agent_id=agent_id, limit=50)
                 for l in recent_agent_logs:
                     message = l.get("message", "")
-                    
-                    # Look for "Total usage" pattern (primary format)
                     if message and "Total usage" in message:
-                        # Normalize the message - handle both literal \n and actual newlines
+                        total_api_calls_from_usage += 1
                         normalized_message = message.replace("\\n", "\n")
-                        
-                        # Extract metrics
+
                         comp_tokens_match = re.search(r"completion_tokens:\s*([0-9]+)", normalized_message)
                         if comp_tokens_match:
                             try:
-                                completion_tokens = int(comp_tokens_match.group(1))
+                                completion_tokens += int(comp_tokens_match.group(1))
                             except Exception:
                                 pass
-                        
+
                         prompt_tokens_match = re.search(r"prompt_tokens:\s*([0-9]+)", normalized_message)
                         if prompt_tokens_match:
                             try:
-                                prompt_tokens = int(prompt_tokens_match.group(1))
+                                prompt_tokens += int(prompt_tokens_match.group(1))
                             except Exception:
                                 pass
-                        
+
                         total_tokens_match = re.search(r"total_tokens:\s*([0-9]+)", normalized_message)
                         if total_tokens_match:
                             try:
-                                total_tokens = int(total_tokens_match.group(1))
+                                total_tokens += int(total_tokens_match.group(1))
                             except Exception:
                                 pass
-                        
+
                         cost_match = re.search(r"response_cost:\s*\$?([0-9]+(?:\.[0-9]+)?)", normalized_message)
                         if cost_match:
                             try:
-                                cost_val = float(cost_match.group(1))
-                                cost_usd += cost_val
-                                total_api_calls += 1
-                                self.logger.info(json.dumps({
-                                    "event": "found_metrics_in_recent_logs",
-                                    "cost": cost_val,
-                                    "tokens": {"completion": completion_tokens, "prompt": prompt_tokens, "total": total_tokens}
-                                }))
+                                cost_usd += float(cost_match.group(1))
                             except Exception:
                                 pass
-                        break  # Found it, no need to continue
+                        break
             except Exception as e:
                 self.logger.warning(json.dumps({
                     "event": "fallback_log_search_failed",
+                    "agent_id": agent_id,
+                    "task_id": task_id,
                     "error": str(e)
                 }))
+
+        total_api_calls = max(total_api_calls_from_usage, metrics.get("total_api_calls", 0))
 
         # Get task information including description and final output
         task_info = None
@@ -349,23 +280,103 @@ class DataCollector:
             "final_output": final_output,
             "collected_at": self._now().isoformat(),
         }
+        self.logger.info(json.dumps({"event": "collected_task", "agent_id": agent_id, "task_id": task_id}))
+        return data
+
+    def extract_raw_metrics_for_task(self, agent_id: Optional[str], task_id: str) -> Dict[str, Any]:
+        """
+        FAST: Extract only raw metrics from MongoDB logs without full evaluation.
+        Parses "Total usage" logs to get completion_tokens, prompt_tokens, cost, etc.
+        Looks in both message field and metadata.stderr field.
+        Also calculates completion_time_s from first and last log timestamps.
+        Returns dict with metrics that frontend expects.
+        """
+        agent_id = self._normalize_id(agent_id or self.default_agent_id)
+        task_id = self._normalize_id(task_id)
         
-        # Log extracted metrics for debugging
-        self.logger.info(json.dumps({
-            "event": "collected_task",
-            "agent_id": agent_id,
-            "task_id": task_id,
-            "metrics_extracted": {
-                "cost_usd": cost_usd,
+        try:
+            logs = self.mongo.fetch_task_logs(agent_id, task_id)
+            if not logs:
+                return {}
+            
+            # Extract metrics from logs
+            completion_tokens = 0
+            prompt_tokens = 0
+            total_tokens = 0
+            cost_usd = 0.0
+            total_api_calls = 0
+            error_count = 0
+            completion_time_s = 0.0
+            
+            # Calculate completion time from first and last log timestamps
+            if len(logs) >= 2:
+                try:
+                    first_log = logs[0]
+                    last_log = logs[-1]
+                    
+                    first_time_str = first_log.get("timestamp") or first_log.get("created_at", "")
+                    last_time_str = last_log.get("timestamp") or last_log.get("created_at", "")
+                    
+                    if first_time_str and last_time_str:
+                        # Parse ISO format timestamps (using datetime already imported at module level)
+                        first_dt = datetime.fromisoformat(first_time_str.replace("Z", "+00:00"))
+                        last_dt = datetime.fromisoformat(last_time_str.replace("Z", "+00:00"))
+                        completion_time_s = (last_dt - first_dt).total_seconds()
+                except Exception:
+                    pass
+            
+            # Parse "Total usage" logs from both message and metadata.stderr
+            for log_entry in logs:
+                message = log_entry.get("message", "")
+                metadata = log_entry.get("metadata", {})
+                stderr = metadata.get("stderr", "") if isinstance(metadata, dict) else ""
+                
+                # Check both message and stderr for "Total usage"
+                text_to_search = message + "\n" + stderr
+                
+                # Look for API call usage metrics
+                if "Total usage" in text_to_search:
+                    total_api_calls += 1
+                    
+                    comp_match = re.search(r"completion_tokens:\s*(\d+)", text_to_search)
+                    if comp_match:
+                        completion_tokens += int(comp_match.group(1))
+                    
+                    prompt_match = re.search(r"prompt_tokens:\s*(\d+)", text_to_search)
+                    if prompt_match:
+                        prompt_tokens += int(prompt_match.group(1))
+                    
+                    total_match = re.search(r"total_tokens:\s*(\d+)", text_to_search)
+                    if total_match:
+                        total_tokens += int(total_match.group(1))
+                    
+                    cost_match = re.search(r"response_cost:\s*\$?(\d+(?:\.\d+)?)", text_to_search)
+                    if cost_match:
+                        cost_usd += float(cost_match.group(1))
+                
+                # Count errors
+                if "ERROR" in text_to_search or "Exception" in text_to_search or "error" in text_to_search.lower():
+                    error_count += 1
+            
+            # Return extracted metrics with names the frontend expects
+            return {
+                "completion_time_s": max(0, completion_time_s),  # Ensure non-negative
+                "error_count": error_count,
                 "total_api_calls": total_api_calls,
+                "cost_usd": round(cost_usd, 4),
+                # Also include token counts for debugging
                 "completion_tokens": completion_tokens,
                 "prompt_tokens": prompt_tokens,
                 "total_tokens": total_tokens,
-                "log_count": len(logs),
-                "stderr_logs_found": stderr_logs_found
             }
-        }))
-        return data
+        except Exception as e:
+            self.logger.warning(json.dumps({
+                "event": "extract_raw_metrics_error",
+                "agent_id": agent_id,
+                "task_id": task_id,
+                "error": str(e)
+            }))
+            return {}
 
     def collect_all(self) -> List[Dict[str, Any]]:
         """
@@ -474,48 +485,91 @@ class DataCollector:
             mem_usage = 0.0
             cpu_usage = 0.0
             cost_usd = 0.0
-            total_api_calls = 0
+            total_api_calls_from_usage = 0
             completion_tokens = 0
             prompt_tokens = 0
             total_tokens = 0
-            
+
             for l in logs:
+                message = l.get("message", "")
+                if message and "Total usage" in message:
+                    total_api_calls_from_usage += 1
+                    normalized_message = message.replace("\\n", "\n")
+
+                    comp_tokens_match = re.search(r"completion_tokens:\s*([0-9]+)", normalized_message)
+                    if comp_tokens_match:
+                        try:
+                            completion_tokens += int(comp_tokens_match.group(1))
+                        except Exception:
+                            pass
+
+                    prompt_tokens_match = re.search(r"prompt_tokens:\s*([0-9]+)", normalized_message)
+                    if prompt_tokens_match:
+                        try:
+                            prompt_tokens += int(prompt_tokens_match.group(1))
+                        except Exception:
+                            pass
+
+                    total_tokens_match = re.search(r"total_tokens:\s*([0-9]+)", normalized_message)
+                    if total_tokens_match:
+                        try:
+                            total_tokens += int(total_tokens_match.group(1))
+                        except Exception:
+                            pass
+
+                    cost_match = re.search(r"response_cost:\s*\$?([0-9]+(?:\.[0-9]+)?)", normalized_message)
+                    if cost_match:
+                        try:
+                            cost_usd += float(cost_match.group(1))
+                        except Exception:
+                            pass
+
+            for l in logs:
+                message = l.get("message", "")
+                if message and "Total usage" in message:
+                    continue
+
                 metadata = l.get("metadata", {})
-                
-                # Check stderr field for CUA usage statistics
                 stderr = metadata.get("stderr", "")
+
+                if not stderr and message and "stderr" in message.lower():
+                    stderr = message
+
+                if not stderr:
+                    if "response_cost" in str(metadata) or "completion_tokens" in str(metadata):
+                        stderr = str(metadata)
+
                 if stderr and isinstance(stderr, str):
-                    # Extract response_cost (this is the main metric we want)
                     cost_match = re.search(r"response_cost:\s*\$?([0-9]+(?:\.[0-9]+)?)", stderr)
                     if cost_match:
                         try:
-                            cost_val = float(cost_match.group(1))
-                            cost_usd += cost_val  # Sum all API costs
-                            total_api_calls += 1
+                            cost_usd += float(cost_match.group(1))
+                            total_api_calls_from_usage += 1
                         except Exception:
                             pass
-                    
-                    # Extract token counts
+
                     comp_tokens_match = re.search(r"completion_tokens:\s*([0-9]+)", stderr)
                     if comp_tokens_match:
                         try:
                             completion_tokens += int(comp_tokens_match.group(1))
                         except Exception:
                             pass
-                    
+
                     prompt_tokens_match = re.search(r"prompt_tokens:\s*([0-9]+)", stderr)
                     if prompt_tokens_match:
                         try:
                             prompt_tokens += int(prompt_tokens_match.group(1))
                         except Exception:
                             pass
-                    
+
                     total_tokens_match = re.search(r"total_tokens:\s*([0-9]+)", stderr)
                     if total_tokens_match:
                         try:
                             total_tokens += int(total_tokens_match.group(1))
                         except Exception:
                             pass
+
+            total_api_calls = max(total_api_calls_from_usage, metrics.get("total_api_calls", 0))
 
             data = {
                 "agent_id": agent_id,

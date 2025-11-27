@@ -228,6 +228,7 @@ const EvaluatorView = () => {
   const status = evaluatorData?.status || 'loading';
   const agentScores = evaluatorData?.agent_scores || {};
   const agentFeedback = evaluatorData?.agent_feedback || {};
+  const performanceInstructions = evaluatorData?.performance_instructions;
   const recentEvaluations = evaluatorData?.recent_evaluations || [];
   
   // Calculate average score from agent feedback summaries
@@ -450,58 +451,82 @@ const EvaluatorView = () => {
             <div className="evaluator-card">
                 <div className="card-header">
                     <h3>Performance by Agent</h3>
+                    <p className="card-subtext">
+                        {performanceInstructions || 'Agents must fetch and report their number of errors, total cost, completion time, and API calls before these scores refresh.'}
+                    </p>
                 </div>
                 <div className="card-body">
-                    {['agent1', 'agent2', 'agent3'].map(agentId => {
-                        const data = agentScores[agentId];
-                        const isCompleted = data?.is_completed || false;
-                        const score = isCompleted ? 100 : (data?.score || 0);
-                        const color = isCompleted ? '#22c55e' : (score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444');
-                        const isExpanded = expandedAgents[agentId];
-                        const agentLabels = {
-                            'agent1': 'Agent 1 - GPT4',
-                            'agent2': 'Agent 2 - GPT 5',
-                            'agent3': 'Agent 3 - GPT 4.1'
-                        };
-                        
-                        return (
-                            <div 
-                                className={`agent-performance-item ${data ? 'clickable' : ''}`} 
-                                key={agentId}
-                                onClick={() => data && toggleAgent(agentId)}
-                                style={{ cursor: data ? 'pointer' : 'default' }}
-                            >
-                                <div className="perf-header">
-                                    <span className="perf-name">{agentLabels[agentId] || agentId}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span className="perf-score" style={{ color }}>{score.toFixed(1)}%</span>
-                                        {data && <span className={`chevron ${isExpanded ? 'expanded' : ''}`}>▼</span>}
+                    {Object.keys(agentScores).length === 0 ? (
+                        <div className="placeholder-state">
+                            <p>No agent scores available yet. Waiting for evaluations...</p>
+                        </div>
+                    ) : (
+                        Object.entries(agentScores).map(([agentId, scoreData]) => {
+                            const feedbackEntry = agentFeedback[agentId];
+                            // First check performance_details if available from feedback, then fall back to scoreData
+                            const data = feedbackEntry?.performance_details || scoreData;
+                            
+                            // Handle missing metrics/breakdown with guards
+                            const breakdown = data?.breakdown || (data?.scores && Object.keys(data.scores).length > 0 ? data.scores : {});
+                            const metrics = data?.metrics || {};
+                            const penalties = data?.penalties || {};
+                            const summary = data?.summary || '';
+                            
+                            const isCompleted = data?.is_completed || false;
+                            const score = isCompleted ? 100 : (data?.score || 0);
+                            const color = isCompleted ? '#22c55e' : (score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444');
+                            const isExpanded = expandedAgents[agentId];
+                            
+                            // Dynamic labels with fallback
+                            const agentLabels = {
+                                'agent1': 'Agent 1 - GPT4',
+                                'agent2': 'Agent 2 - GPT 5',
+                                'agent3': 'Agent 3 - GPT 4.1'
+                            };
+                            
+                            return (
+                                <div 
+                                    className={`agent-performance-item ${data ? 'clickable' : ''}`} 
+                                    key={agentId}
+                                    onClick={() => data && toggleAgent(agentId)}
+                                    style={{ cursor: data ? 'pointer' : 'default' }}
+                                >
+                                    <div className="perf-header">
+                                        <span className="perf-name">{agentLabels[agentId] || agentId}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span className="perf-score" style={{ color }}>{score.toFixed(1)}%</span>
+                                            {data && <span className={`chevron ${isExpanded ? 'expanded' : ''}`}>▼</span>}
+                                        </div>
+                                    </div>
+                                    <div className="perf-bar-bg">
+                                        <div className="perf-bar-fill" style={{ 
+                                            width: `${score}%`,
+                                            backgroundColor: color
+                                        }}></div>
+                                    </div>
+                                    
+                                    <div className={`agent-details-dropdown ${isExpanded ? 'expanded' : ''}`}>
+                                        <div className="agent-details-content">
+                                             {data && (Object.keys(breakdown).length > 0 || Object.keys(metrics).length > 0) ? (
+                                                 <ScoreBreakdown 
+                                                    scores={breakdown}
+                                                    metrics={metrics}
+                                                    penalties={penalties}
+                                                    summary={summary}
+                                                    isCompact={true}
+                                                    isCompleted={isCompleted}
+                                                 />
+                                             ) : (
+                                                 <div style={{ padding: '12px', color: 'var(--muted-text)', fontSize: '0.85rem' }}>
+                                                     <p>Metrics not yet available. Processing...</p>
+                                                 </div>
+                                             )}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="perf-bar-bg">
-                                    <div className="perf-bar-fill" style={{ 
-                                        width: `${score}%`,
-                                        backgroundColor: color
-                                    }}></div>
-                                </div>
-                                
-                                <div className={`agent-details-dropdown ${isExpanded ? 'expanded' : ''}`}>
-                                    <div className="agent-details-content">
-                                         {data && (
-                                             <ScoreBreakdown 
-                                                scores={data.breakdown}
-                                                metrics={data.metrics}
-                                                penalties={data.penalties}
-                                                summary={data.summary}
-                                                isCompact={true}
-                                                isCompleted={isCompleted}
-                                             />
-                                         )}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                 </div>
             </div>
 
