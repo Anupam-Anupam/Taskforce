@@ -756,7 +756,7 @@ const ChatTerminal = () => {
           {/* Always show "What would you like to do?" but fade when user types */}
           {!historyLoading && !historyError && (
             <div style={{ 
-              color: '#a3a3a3', 
+              color: '#ffffff', 
               fontSize: '2rem', 
               textAlign: 'center', 
               position: 'absolute',

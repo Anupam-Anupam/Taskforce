@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import random
 from datetime import datetime
 from typing import Optional
 
@@ -26,46 +25,6 @@ from fastapi.responses import Response
 # Simple structured logging
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("evaluator_agent")
-
-
-def generate_random_defaults_for_agent(agent_id: str) -> dict:
-    """
-    Generate random but consistent default values for an agent.
-    Uses agent_id as seed to ensure consistency across requests.
-    """
-    # Use agent_id as seed for consistent random values
-    seed = hash(agent_id) % (2**32)
-    random.seed(seed)
-    
-    # Generate random values - store them first for summary
-    completion_time = round(random.uniform(0.0, 120.0), 1)
-    error_count = random.randint(0, 5)
-    retries = random.randint(0, 3)
-    dependency_requests = random.randint(0, 2)
-    api_calls = random.randint(0, 50)
-    
-    defaults = {
-        "breakdown": {
-            "correctness": round(random.uniform(0.7, 1.0), 2),      # 70-100%
-            "efficiency": round(random.uniform(0.5, 1.0), 2),       # 50-100%
-            "quality": round(random.uniform(0.0, 0.9), 2),          # 0-90%
-            "stability": round(random.uniform(0.0, 0.8), 2),         # 0-80%
-            "autonomy": round(random.uniform(0.0, 0.7), 2),         # 0-70%
-            "resource_efficiency": round(random.uniform(0.6, 1.0), 2)  # 60-100%
-        },
-        "metrics": {
-            "completion_time_s": completion_time,
-            "error_count": error_count,
-            "total_api_calls": api_calls,
-            "cost_usd": round(random.uniform(0.0, 0.1), 4)
-        },
-        "summary": f"Evaluation summary based on heuristics: completion_time={completion_time}s, errors={error_count}, retries={retries}, dependency_requests={dependency_requests}, api_calls={api_calls}."
-    }
-    
-    # Reset random seed to avoid affecting other random operations
-    random.seed()
-    
-    return defaults
 
 
 def build_score_breakdown(scores: dict, metrics: dict, is_completed: bool) -> dict:
@@ -213,14 +172,6 @@ def create_app() -> FastAPI:
                         if final_score <= 1.0:
                             final_score *= 100
                         
-                        # Apply boost if score is below 80% (soft boost, not hard clamp)
-                        calculated_score = round(final_score, 2)
-                        if calculated_score < 80 and not is_completed:
-                            # Boost by 85% of the gap to 80, so scores get much closer to 80 but maintain differentiation
-                            boost = (80 - calculated_score) * 0.85
-                            calculated_score = min(80.0, calculated_score + boost)
-                            calculated_score = round(calculated_score, 2)
-                        
                         # Build detailed breakdown with correctness, efficiency, etc.
                         report_scores = report.get("scores", {})
                         report_metrics = report.get("metrics", {})
@@ -233,7 +184,7 @@ def create_app() -> FastAPI:
                         
                         # Update agent score (will keep updating to latest)
                         agent_scores[agent_id] = {
-                            "score": calculated_score,
+                            "score": round(final_score, 2),
                             "task_id": task_id,
                             "evaluated_at": report.get("evaluated_at"),
                             "breakdown": breakdown,
@@ -282,16 +233,8 @@ def create_app() -> FastAPI:
                             # For agents with no active evaluation, use a simple score based on task completion
                             score = 100.0 if is_completed else 0.0
                             
-                            # Apply boost if score is below 80% (soft boost, not hard clamp)
-                            calculated_score = round(score, 2)
-                            if calculated_score < 80 and not is_completed:
-                                # Boost by 85% of the gap to 80
-                                boost = (80 - calculated_score) * 0.85
-                                calculated_score = min(80.0, calculated_score + boost)
-                                calculated_score = round(calculated_score, 2)
-                            
                             agent_scores[agent_id] = {
-                                "score": calculated_score,
+                                "score": round(score, 2),
                                 "task_id": task_id,
                                 "evaluated_at": task.get("updated_at", ""),
                                 "breakdown": {},  # No breakdown for persistent (non-evaluated) scores
@@ -418,51 +361,6 @@ def create_app() -> FastAPI:
                 }))
                 # Fallback to cached reports if calculation fails
                 recent_evaluations = all_reports[:5] if all_reports else []
-            
-            # Ensure all three agents always have data with random defaults if missing
-            for agent_id in ['agent1', 'agent2', 'agent3']:
-                if agent_id not in agent_scores:
-                    # Generate random defaults for this agent
-                    defaults = generate_random_defaults_for_agent(agent_id)
-                    
-                    # Calculate average score from breakdown
-                    breakdown = defaults["breakdown"]
-                    avg_score_from_breakdown = sum(breakdown.values()) / len(breakdown) * 100
-                    
-                    # Apply boost if score is below 80% (soft boost, not hard clamp)
-                    calculated_score = round(avg_score_from_breakdown, 2)
-                    if calculated_score < 80:
-                        # Boost by 85% of the gap to 80
-                        boost = (80 - calculated_score) * 0.85
-                        calculated_score = min(80.0, calculated_score + boost)
-                        calculated_score = round(calculated_score, 2)
-                    
-                    agent_scores[agent_id] = {
-                        "score": calculated_score,
-                        "task_id": None,
-                        "evaluated_at": None,
-                        "breakdown": breakdown,
-                        "metrics": defaults["metrics"],
-                        "penalties": {},
-                        "summary": defaults["summary"],
-                        "is_completed": False
-                    }
-                else:
-                    # If agent has data but missing breakdown, add random defaults
-                    if not agent_scores[agent_id].get("breakdown") or len(agent_scores[agent_id].get("breakdown", {})) == 0:
-                        defaults = generate_random_defaults_for_agent(agent_id)
-                        agent_scores[agent_id]["breakdown"] = defaults["breakdown"]
-                        if not agent_scores[agent_id].get("metrics") or len(agent_scores[agent_id].get("metrics", {})) == 0:
-                            agent_scores[agent_id]["metrics"] = defaults["metrics"]
-                        if not agent_scores[agent_id].get("summary"):
-                            agent_scores[agent_id]["summary"] = defaults["summary"]
-                    
-                    # Apply boost to existing score if below 80%
-                    existing_score = agent_scores[agent_id].get("score", 0)
-                    if existing_score < 80 and not agent_scores[agent_id].get("is_completed", False):
-                        boost = (80 - existing_score) * 0.85
-                        boosted_score = min(80.0, existing_score + boost)
-                        agent_scores[agent_id]["score"] = round(boosted_score, 2)
             
             performance_instructions = (
                 "Agents must fetch and report their number of errors, total cost, completion time, and API calls before these scores refresh."
@@ -639,14 +537,13 @@ def create_app() -> FastAPI:
                     }))
                     continue
             
-            # Ensure all 3 agents are in the snapshots dict (even if empty)
-            # This allows the visualization to generate synthetic data for missing agents
-            for agent_id in ["agent1", "agent2", "agent3"]:
-                if agent_id not in agent_snapshots:
-                    agent_snapshots[agent_id] = []
+            if not agent_snapshots:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No progress data found for any agent"
+                )
             
             # Build multi-agent progress figure
-            # The visualization function will generate synthetic data for agents with no snapshots
             from modules.visualization import build_multi_agent_progress_figure, figure_to_png_bytes
             
             fig = build_multi_agent_progress_figure(agent_snapshots)
